@@ -1,0 +1,3 @@
+import { NextResponse } from 'next/server'; import { z } from 'zod'; import { createClient } from '@/lib/supabase/server';
+const eventSchema=z.object({promotionId:z.string().uuid(),eventType:z.enum(['view','click','profile_view','like','share'])});
+export async function POST(request:Request){try{const data=eventSchema.parse(await request.json());const db=await createClient();if(!db)return NextResponse.json({error:'Service unavailable'},{status:503});const {data:{user}}=await db.auth.getUser();const {error}=await db.from('promotion_events').insert({promotion_id:data.promotionId,user_id:user?.id??null,event_type:data.eventType});if(error)throw error;return NextResponse.json({ok:true})}catch{return NextResponse.json({error:'Invalid analytics event'},{status:400})}}

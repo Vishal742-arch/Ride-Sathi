@@ -1,0 +1,3 @@
+import { z } from 'zod';
+export const promotionSchema=z.object({title:z.string().min(3).max(120),description:z.string().min(10).max(1000),contentUrl:z.string().url(),platform:z.enum(['Instagram','YouTube','TikTok','X/Twitter','Website','Other']),category:z.string().min(2).max(50),targetAudience:z.string().min(3).max(200),goal:z.string().min(3).max(200),package:z.enum(['starter','growth','premium'])});
+export const packages={starter:{name:'Starter',amount:1900,impressions:1000,duration:3},growth:{name:'Growth',amount:4900,impressions:5000,duration:7},premium:{name:'Premium',amount:11900,impressions:15000,duration:14}} as const;
