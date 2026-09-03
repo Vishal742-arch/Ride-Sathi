@@ -50,8 +50,9 @@ export async function createDodoCheckoutSession(params: {
   }
 
   // Graceful fallback for local development & preview mode
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
   return {
-    checkoutUrl: `https://test.dodopayments.com/pay/mock_session_${Date.now()}?amount=${params.amountInINR}&ride=${params.rideId}`,
+    checkoutUrl: `${baseUrl}/find?paid=true&amount=${params.amountInINR}&ride=${params.rideId}`,
     paymentId: `dodo_pay_${Date.now()}`,
     isMock: true,
   };
