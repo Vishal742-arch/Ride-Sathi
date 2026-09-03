@@ -47,6 +47,24 @@ export default function FindRide(){
               <span className="driver-verified-tag">✓ Rahul Sharma (4.9 ★)</span>
             </div>
             <div className="ride-actions">
+              <button
+                className="ride-btn ride-btn-dark"
+                onClick={async () => {
+                  try {
+                    const res = await fetch('/api/dodo/checkout', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ amount: 80, rideId: 'mock-ride-1' }),
+                    });
+                    const data = await res.json();
+                    if (data.checkoutUrl) window.open(data.checkoutUrl, '_blank');
+                  } catch {
+                    alert('Error launching Dodo Payment.');
+                  }
+                }}
+              >
+                🦤 Pay ₹80 via Dodo
+              </button>
               <button className="ride-btn ride-btn-light" onClick={() => setActiveChatRideId('mock-ride-1')}>
                 <MessageSquare size={16}/> In-App Chat
               </button>
