@@ -1,4 +1,16 @@
-# Promova
+# Ride With Me
+
+Mobile-first shared rides for Indore, Dewas, and future connected cities.
+
+## Local development
+
+1. Copy `.env.example` to `.env.local` and add your Supabase values.
+2. Run the migrations in `supabase/migrations` using the Supabase CLI or SQL editor.
+3. Run `npm install` and `npm run dev`.
+
+## Vercel
+
+Import this repository into Vercel, add the environment variables from `.env.example`, and deploy. The included `vercel.json` uses the standard Next.js build command.
 
 Creator promotion and discovery platform built with Next.js, Supabase, and Stripe.
 

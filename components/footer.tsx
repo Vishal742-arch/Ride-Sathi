@@ -1,0 +1,1 @@
+export function Footer(){return <footer className="site-footer"><div className="shell"><span>© 2026 <b>Ride With Me</b>. All rights reserved.</span><span>Created &amp; Developed by <a href="https://www.linkedin.com/in/vishal-maratha2002" target="_blank" rel="noreferrer">Vishal Maratha</a></span></div></footer>}
