@@ -31,9 +31,17 @@ export default function FindRide(){
   const [activeChatRideId, setActiveChatRideId] = useState<string|null>(null);
   const [bookingRide, setBookingRide] = useState<RideItem|null>(null);
   const [rides, setRides] = useState<RideItem[]>([]);
+  const [, setNow] = useState(Date.now());
 
   useEffect(() => {
     fetchRides();
+
+    // Live runtime ticker: updates relative timestamps (e.g. 10 min ago -> 11 min ago) dynamically every minute
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 60000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const fetchRides = async (fromQuery?: string, toQuery?: string) => {
