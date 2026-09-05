@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
         price_per_seat: 80,
         is_verified: true,
         created_at: r.created_at || new Date().toISOString(),
+        postedAt: r.created_at || new Date().toISOString(),
       }));
     }
   }

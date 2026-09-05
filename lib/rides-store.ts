@@ -10,6 +10,7 @@ export interface PublishedRide {
   price_per_seat: number;
   is_verified: boolean;
   created_at: string;
+  postedAt?: string;
 }
 
 export const publishedRidesStore: PublishedRide[] = [
@@ -24,7 +25,8 @@ export const publishedRidesStore: PublishedRide[] = [
     available_seats: 3,
     price_per_seat: 80,
     is_verified: true,
-    created_at: new Date().toISOString(),
+    created_at: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+    postedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
   },
   {
     id: 'ride-2',
@@ -37,7 +39,8 @@ export const publishedRidesStore: PublishedRide[] = [
     available_seats: 1,
     price_per_seat: 120,
     is_verified: true,
-    created_at: new Date().toISOString(),
+    created_at: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
+    postedAt: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
   },
   {
     id: 'ride-3',
@@ -50,6 +53,7 @@ export const publishedRidesStore: PublishedRide[] = [
     available_seats: 2,
     price_per_seat: 90,
     is_verified: true,
-    created_at: new Date().toISOString(),
+    created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    postedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
   },
 ];

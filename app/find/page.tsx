@@ -1,8 +1,9 @@
 'use client';
-import { CalendarDays, Car, ChevronDown, MapPin, MessageSquare, Phone, Search, ShieldCheck, Users, X } from 'lucide-react';
+import { CalendarDays, Car, ChevronDown, Clock, MapPin, MessageSquare, Phone, Search, ShieldCheck, Users, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { RideChat } from '@/components/ride-chat';
 import { RideBookingModal } from '@/components/ride-booking-modal';
+import { formatPostedTime } from '@/lib/utils/format-posted-time';
 
 type Location={id:string;name:string;city:string};
 type RideItem={
@@ -16,6 +17,8 @@ type RideItem={
   available_seats: number;
   price_per_seat: number;
   is_verified: boolean;
+  postedAt?: string;
+  created_at?: string;
 };
 
 function LocationPicker({label,value,onSelect,exclude}:{label:string;value:Location|null;onSelect:(location:Location|null)=>void;exclude?:string}){const [query,setQuery]=useState('');const [results,setResults]=useState<Location[]>([]);const [open,setOpen]=useState(false);const [status,setStatus]=useState('');const area=useRef<HTMLDivElement>(null);useEffect(()=>{const close=(event:MouseEvent)=>{if(!area.current?.contains(event.target as Node))setOpen(false)};document.addEventListener('mousedown',close);return()=>document.removeEventListener('mousedown',close)},[]);useEffect(()=>{if(!open||!query.trim()){setResults([]);setStatus('');return}const controller=new AbortController();const timer=setTimeout(async()=>{try{const response=await fetch(`/api/locations?q=${encodeURIComponent(query)}`,{signal:controller.signal});const body=await response.json();if(!response.ok)throw new Error(body.error);setResults(body.filter((item:Location)=>item.id!==exclude));setStatus(body.length?'':'No matching locations yet.')}catch(error){if((error as Error).name!=='AbortError')setStatus('Connect Supabase to search the location network.')}},220);return()=>{clearTimeout(timer);controller.abort()}},[query,open,exclude]);return <div className="location-picker" ref={area}><span>{label}</span><div className="find-input"><MapPin/><input value={value?.name??query} onFocus={()=>{setOpen(true);if(value)setQuery(value.name)}} onChange={event=>{onSelect(null);setQuery(event.target.value);setOpen(true)}} placeholder={label==='FROM'?'Select pickup':'Select destination'} aria-label={label==='FROM'?'Pickup location':'Destination location'} autoComplete="off"/>{value&&<button type="button" className="clear-location" aria-label={`Clear ${label.toLowerCase()}`} onClick={()=>{onSelect(null);setQuery('');setOpen(false)}}><X size={15}/></button>}</div>{open&&query&&<div className="location-popover" role="listbox">{results.map(location=><button type="button" role="option" key={location.id} onClick={()=>{onSelect(location);setQuery('');setOpen(false)}}><MapPin size={16}/><span><b>{location.name}</b><small>{location.city}</small></span></button>)}{status&&<p>{status}</p>}</div>}</div>}
@@ -81,12 +84,17 @@ export default function FindRide(){
 
           {rides.map(ride => (
             <div key={ride.id} className="ride-card-item">
-              <div className="ride-header">
-                <div>
+              <div className="ride-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ flex: 1, minWidth: 220 }}>
                   <h3>{ride.origin} ➔ {ride.destination}</h3>
                   <p>Departure: {ride.departure_time} • ₹{ride.price_per_seat}/seat • {ride.vehicle}</p>
                 </div>
-                <span className="driver-verified-tag">✓ {ride.driver_name} ({ride.driver_rating} ★)</span>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                  <span style={{ fontSize: 11, color: '#617d72', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, background: '#f0f7f4', padding: '3px 8px', borderRadius: 8, border: '1px solid #dcece2' }}>
+                    <Clock size={12} style={{ color: '#087c64' }} /> {formatPostedTime(ride.postedAt || ride.created_at || '')}
+                  </span>
+                  <span className="driver-verified-tag">✓ {ride.driver_name} ({ride.driver_rating} ★)</span>
+                </div>
               </div>
               <div className="ride-actions">
                 <button className="ride-btn ride-btn-primary" onClick={() => setBookingRide(ride)}>
