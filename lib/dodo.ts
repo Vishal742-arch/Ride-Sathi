@@ -94,7 +94,11 @@ export async function createDodoCheckoutSession(params: {
   // Safe local fallback for development & preview testing
   const baseUrl =
     process.env.NEXT_PUBLIC_APP_URL ||
-    (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+    (typeof window !== 'undefined'
+      ? window.location.origin
+      : process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : 'https://ride-sathi-nu.vercel.app');
 
   logApiCall('WRITE: createCheckoutSession (Simulated Fallback)', { rideId: params.rideId });
 
