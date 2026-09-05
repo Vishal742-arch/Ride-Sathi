@@ -92,13 +92,13 @@ export default function FindRide(){
 
           {rides.map(ride => (
             <div key={ride.id} className="ride-card-item">
-              <div className="ride-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
-                <div style={{ flex: 1, minWidth: 220 }}>
+              <div className="ride-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10, width: '100%' }}>
+                <div style={{ flex: '1 1 200px' }}>
                   <h3>{ride.origin} ➔ {ride.destination}</h3>
                   <p>Departure: {ride.departure_time} • ₹{ride.price_per_seat}/seat • {ride.vehicle}</p>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                  <span style={{ fontSize: 11, color: '#617d72', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, background: '#f0f7f4', padding: '3px 8px', borderRadius: 8, border: '1px solid #dcece2' }}>
+                <div className="ride-header-meta" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+                  <span style={{ fontSize: 11, color: '#617d72', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, background: '#f0f7f4', padding: '3px 8px', borderRadius: 8, border: '1px solid #dcece2', whiteSpace: 'nowrap' }}>
                     <Clock size={12} style={{ color: '#087c64' }} /> {formatPostedTime(ride.postedAt || ride.created_at || '')}
                   </span>
                   <span className="driver-verified-tag">✓ {ride.driver_name} ({ride.driver_rating} ★)</span>
