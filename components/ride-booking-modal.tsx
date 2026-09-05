@@ -53,7 +53,7 @@ export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
       }
       
       if (data.success && data.checkoutUrl) {
-        // Prevent duplicate clicks and redirect to official payment provider checkout
+        // Redirect directly to official Dodo Payments checkout gateway (UPI/Card)
         window.location.href = data.checkoutUrl;
       } else {
         setError(data.error || 'Payment link could not be generated.');

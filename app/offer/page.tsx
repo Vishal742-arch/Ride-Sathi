@@ -255,17 +255,9 @@ export default function OfferRide() {
             <h2 className="text-2xl font-bold text-slate-900">Ride Offered Successfully!</h2>
             <p className="text-slate-600 mt-2 max-w-md mx-auto">{result.message}</p>
             <div className="mt-6 flex justify-center gap-4">
-              <button
-                type="button"
-                className="ride-btn ride-btn-primary"
-                onClick={() => {
-                  setResult(null);
-                  setFrom(null);
-                  setTo(null);
-                }}
-              >
-                Offer Another Ride
-              </button>
+              <a href={`/find?ride=${result.rideId}`} className="ride-btn ride-btn-primary">
+                View & Test Payment Checkout
+              </a>
               <a href="/dashboard" className="ride-btn ride-btn-dark">
                 View My Dashboard
               </a>
