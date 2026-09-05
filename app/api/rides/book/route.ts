@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create Dodo Payments checkout session (server-side only, API key never reaches client)
-    const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/find?paid=true&booking=${bookingId}`;
+    const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://ride-sathi-nu.vercel.app'}/find?booking=${bookingId}`;
 
     const dodoSession = await createDodoCheckoutSession({
       amountInINR: fareAmount,
@@ -52,6 +52,10 @@ export async function POST(request: NextRequest) {
       passengerName: passengerName || 'Ride Sathi Commuter',
       returnUrl,
     });
+
+    if (!dodoSession.checkoutUrl) {
+      return NextResponse.json({ error: 'Failed to create payment checkout session with provider.' }, { status: 500 });
+    }
 
     return NextResponse.json({
       success: true,
@@ -63,7 +67,6 @@ export async function POST(request: NextRequest) {
       checkoutUrl: dodoSession.checkoutUrl,
       paymentId: dodoSession.paymentId,
       isMockPayment: dodoSession.isMock,
-      message: 'Booking confirmed! Use your Trip PIN when boarding the ride.',
     });
   } catch (err: any) {
     console.error('[Book API] Error:', err?.message || err);

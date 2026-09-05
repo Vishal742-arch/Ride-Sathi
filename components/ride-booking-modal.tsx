@@ -47,29 +47,20 @@ export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Booking failed. Please try again.');
+        setError(data.error || 'Failed to initialize payment. Please try again.');
+        setLoading(false);
         return;
       }
-      if (data.success) {
-        setBookingResult({
-          bookingId: data.bookingId,
-          tripPin: data.tripPin,
-          fareAmount: data.fareAmount,
-          checkoutUrl: data.checkoutUrl,
-          isMockPayment: data.isMockPayment,
-          paymentId: data.paymentId,
-        });
-
-        // Automatically attempt redirect to payment checkout if present
-        if (data.checkoutUrl) {
-          window.location.href = data.checkoutUrl;
-        }
+      
+      if (data.success && data.checkoutUrl) {
+        // Prevent duplicate clicks and redirect to official payment provider checkout
+        window.location.href = data.checkoutUrl;
       } else {
-        setError(data.error || 'Booking failed. Please try again.');
+        setError(data.error || 'Payment link could not be generated.');
+        setLoading(false);
       }
     } catch {
       setError('Network error. Please check your connection and try again.');
-    } finally {
       setLoading(false);
     }
   };
