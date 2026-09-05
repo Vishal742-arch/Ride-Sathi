@@ -51,6 +51,10 @@ export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
         return;
       }
       if (data.success) {
+        if (data.checkoutUrl) {
+          window.location.href = data.checkoutUrl;
+          return;
+        }
         setBookingResult({
           bookingId: data.bookingId,
           tripPin: data.tripPin,
