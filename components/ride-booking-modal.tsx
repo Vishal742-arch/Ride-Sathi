@@ -51,10 +51,6 @@ export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
         return;
       }
       if (data.success) {
-        if (data.checkoutUrl) {
-          window.location.href = data.checkoutUrl;
-          return;
-        }
         setBookingResult({
           bookingId: data.bookingId,
           tripPin: data.tripPin,
@@ -63,6 +59,11 @@ export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
           isMockPayment: data.isMockPayment,
           paymentId: data.paymentId,
         });
+
+        // Automatically attempt redirect to payment checkout if present
+        if (data.checkoutUrl) {
+          window.location.href = data.checkoutUrl;
+        }
       } else {
         setError(data.error || 'Booking failed. Please try again.');
       }
@@ -267,16 +268,15 @@ export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
               </div>
 
               {/* Complete payment link if Dodo returned one */}
-              {bookingResult.checkoutUrl && !bookingResult.isMockPayment && (
+              {bookingResult.checkoutUrl && (
                 <a
                   href={bookingResult.checkoutUrl}
-                  target="_blank"
-                  rel="noreferrer"
+                  target="_self"
                   className="ride-btn ride-btn-dark"
-                  style={{ width: '100%', display: 'inline-flex', justifyContent: 'center', marginTop: 8 }}
+                  style={{ width: '100%', display: 'inline-flex', justifyContent: 'center', marginTop: 12, padding: '14px', fontSize: 15, background: '#087c64', color: '#fff', fontWeight: 700 }}
                 >
-                  <ExternalLink size={16} style={{ marginRight: 8 }} />
-                  Complete Payment via Dodo
+                  <ExternalLink size={18} style={{ marginRight: 8 }} />
+                  Proceed to Dodo Payment Gateway (UPI / Card)
                 </a>
               )}
             </div>
