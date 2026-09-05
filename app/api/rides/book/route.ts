@@ -4,36 +4,53 @@ import { createDodoCheckoutSession } from '@/lib/dodo';
 
 export async function POST(request: NextRequest) {
   try {
-    const { rideId, seats = 1, paymentMethod = 'UPI', passengerName, passengerPhone } = await request.json();
+    const {
+      rideId,
+      seats = 1,
+      paymentMethod = 'UPI',
+      passengerName,
+      passengerEmail,
+      passengerPhone,
+    } = await request.json();
 
     if (!rideId) {
       return NextResponse.json({ error: 'rideId is required.' }, { status: 400 });
     }
 
-    // Generate random Trip PIN (e.g. 4827)
     const tripPin = Math.floor(1000 + Math.random() * 9000).toString();
     const bookingId = `book_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const fareAmount = 80 * Number(seats);
 
+    // Get authenticated user (if logged in) for Supabase record
+    let authenticatedUserId: string | null = null;
+    let userEmail = passengerEmail;
     const supabase = await createClient();
     if (supabase) {
       const { data: userData } = await supabase.auth.getUser();
       if (userData?.user) {
+        authenticatedUserId = userData.user.id;
+        userEmail = userEmail || userData.user.email;
+
         await supabase.from('bookings').insert({
+          id: bookingId,
           ride_id: rideId,
-          passenger_id: userData.user.id,
+          passenger_id: authenticatedUserId,
           seats: Number(seats),
-          status: 'CONFIRMED',
+          status: 'PENDING_PAYMENT',
           booking_final_fare: fareAmount,
         });
       }
     }
 
-    // Initiate Dodo Payments checkout session for UPI/Cards/Netbanking
+    // Create Dodo Payments checkout session (server-side only, API key never reaches client)
+    const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/find?paid=true&booking=${bookingId}`;
+
     const dodoSession = await createDodoCheckoutSession({
       amountInINR: fareAmount,
       rideId,
+      passengerEmail: userEmail,
       passengerName: passengerName || 'Ride Sathi Commuter',
+      returnUrl,
     });
 
     return NextResponse.json({
@@ -44,9 +61,12 @@ export async function POST(request: NextRequest) {
       fareAmount,
       paymentMethod,
       checkoutUrl: dodoSession.checkoutUrl,
+      paymentId: dodoSession.paymentId,
+      isMockPayment: dodoSession.isMock,
       message: 'Booking confirmed! Use your Trip PIN when boarding the ride.',
     });
-  } catch (err) {
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+  } catch (err: any) {
+    console.error('[Book API] Error:', err?.message || err);
+    return NextResponse.json({ error: err?.message || 'Booking failed. Please try again.' }, { status: 500 });
   }
 }

@@ -1,5 +1,5 @@
 'use client';
-import { CheckCircle2, CreditCard, KeyRound, QrCode, ShieldCheck, Sparkles, X } from 'lucide-react';
+import { CheckCircle2, CreditCard, ExternalLink, KeyRound, QrCode, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { useState } from 'react';
 
 interface RideBookingModalProps {
@@ -16,17 +16,24 @@ interface RideBookingModalProps {
 
 export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
   const [seats, setSeats] = useState(1);
-  const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'CARD' | 'DODO'>('UPI');
+  const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'CARD'>('UPI');
+  const [passengerName, setPassengerName] = useState('');
   const [loading, setLoading] = useState(false);
   const [bookingResult, setBookingResult] = useState<{
     bookingId: string;
     tripPin: string;
     fareAmount: number;
     checkoutUrl?: string;
+    isMockPayment?: boolean;
+    paymentId?: string;
   } | null>(null);
+  const [error, setError] = useState('');
+
+  const totalFare = ride.price_per_seat * seats;
 
   const handleConfirmBooking = async () => {
     setLoading(true);
+    setError('');
     try {
       const res = await fetch('/api/rides/book', {
         method: 'POST',
@@ -35,21 +42,28 @@ export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
           rideId: ride.id,
           seats,
           paymentMethod,
+          passengerName: passengerName.trim() || undefined,
         }),
       });
       const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Booking failed. Please try again.');
+        return;
+      }
       if (data.success) {
         setBookingResult({
           bookingId: data.bookingId,
           tripPin: data.tripPin,
           fareAmount: data.fareAmount,
           checkoutUrl: data.checkoutUrl,
+          isMockPayment: data.isMockPayment,
+          paymentId: data.paymentId,
         });
       } else {
-        alert(data.error || 'Failed to complete booking');
+        setError(data.error || 'Booking failed. Please try again.');
       }
     } catch {
-      alert('Network error completing booking.');
+      setError('Network error. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -74,6 +88,7 @@ export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
             </div>
 
             <div className="privacy-modal-body" style={{ display: 'grid', gap: 18 }}>
+              {/* Ride Summary */}
               <div className="booking-summary-box" style={{ background: '#f6fbf8', border: '1px solid #dbece2', padding: 16, borderRadius: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                   <span style={{ fontSize: 12, color: '#617d72', fontWeight: 600 }}>DRIVER</span>
@@ -89,6 +104,23 @@ export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
                 </div>
               </div>
 
+              {/* Passenger Name */}
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#617d72', display: 'block', marginBottom: 8 }}>
+                  YOUR NAME (OPTIONAL)
+                </label>
+                <div className="find-input" style={{ borderRadius: 12 }}>
+                  <input
+                    type="text"
+                    placeholder="e.g. Arjun Singh"
+                    value={passengerName}
+                    onChange={e => setPassengerName(e.target.value)}
+                    style={{ background: 'transparent', border: 'none', outline: 'none', width: '100%' }}
+                  />
+                </div>
+              </div>
+
+              {/* Seat Selector */}
               <div>
                 <label style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#617d72', display: 'block', marginBottom: 8 }}>
                   SELECT SEATS
@@ -116,9 +148,10 @@ export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
                 </div>
               </div>
 
+              {/* Payment Method */}
               <div>
                 <label style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#617d72', display: 'block', marginBottom: 8 }}>
-                  SELECT PAYMENT METHOD (UPI / CARD / DODO)
+                  PAYMENT METHOD
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                   <button
@@ -160,18 +193,28 @@ export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
                 </div>
               </div>
 
+              {error && (
+                <div style={{ background: '#fff0f0', border: '1px solid #fca5a5', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#991b1b' }}>
+                  ⚠️ {error}
+                </div>
+              )}
+
               <div style={{ background: '#edf7f2', padding: 12, borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#164d3f' }}>
-                <ShieldCheck size={16} /> Contact privacy & SOS protection included automatically.
+                <ShieldCheck size={16} /> Contact privacy & SOS protection included automatically. Powered by Dodo Payments.
               </div>
             </div>
 
             <div className="privacy-modal-footer" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <span style={{ fontSize: 11, color: '#617d72', display: 'block' }}>TOTAL FARE</span>
-                <strong style={{ fontSize: 18, color: '#087c64' }}>₹{ride.price_per_seat * seats}</strong>
+                <strong style={{ fontSize: 18, color: '#087c64' }}>₹{totalFare}</strong>
               </div>
-              <button className="ride-btn ride-btn-primary" onClick={handleConfirmBooking} disabled={loading}>
-                {loading ? 'Processing...' : `Pay ₹${ride.price_per_seat * seats} & Confirm`}
+              <button
+                className="ride-btn ride-btn-primary"
+                onClick={handleConfirmBooking}
+                disabled={loading}
+              >
+                {loading ? 'Processing…' : `Pay ₹${totalFare} & Confirm`}
               </button>
             </div>
           </>
@@ -188,7 +231,8 @@ export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
             </div>
 
             <div className="privacy-modal-body" style={{ textAlign: 'center' }}>
-              <div style={{ background: '#f3faf6', border: '2px stroke #087c64', borderRadius: 20, padding: 24, margin: '10px 0' }}>
+              {/* Trip PIN */}
+              <div style={{ background: '#f3faf6', border: '2px solid #d1fae5', borderRadius: 20, padding: 24, margin: '10px 0' }}>
                 <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: '#087c64' }}>
                   YOUR TRIP BOARDING PIN
                 </span>
@@ -200,18 +244,36 @@ export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
                 </p>
               </div>
 
-              {bookingResult.checkoutUrl && (
-                <div style={{ marginTop: 14 }}>
-                  <a
-                    href={bookingResult.checkoutUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="ride-btn ride-btn-dark"
-                    style={{ width: '100%', display: 'inline-flex' }}
-                  >
-                    🦤 Complete Gateway Receipt via Dodo
-                  </a>
+              {/* Payment details */}
+              <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 12, padding: '12px 16px', margin: '12px 0', textAlign: 'left' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>BOOKING ID</span>
+                  <span style={{ fontSize: 12, color: '#374151', fontFamily: 'monospace' }}>{bookingResult.bookingId.slice(0, 20)}</span>
                 </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>FARE PAID</span>
+                  <span style={{ fontSize: 12, color: '#087c64', fontWeight: 700 }}>₹{bookingResult.fareAmount}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>PAYMENT</span>
+                  <span style={{ fontSize: 12, color: '#374151' }}>
+                    {bookingResult.isMockPayment ? '🔵 Dev/Preview Mode' : '✅ Dodo Payments Live'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Complete payment link if Dodo returned one */}
+              {bookingResult.checkoutUrl && !bookingResult.isMockPayment && (
+                <a
+                  href={bookingResult.checkoutUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="ride-btn ride-btn-dark"
+                  style={{ width: '100%', display: 'inline-flex', justifyContent: 'center', marginTop: 8 }}
+                >
+                  <ExternalLink size={16} style={{ marginRight: 8 }} />
+                  Complete Payment via Dodo
+                </a>
               )}
             </div>
 
