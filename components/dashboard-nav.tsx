@@ -6,7 +6,7 @@ const items = [
   ['Overview', '/dashboard', LayoutDashboard],
   ['Find Rides', '/find', Car],
   ['Offer Ride', '/offer', Repeat],
-  ['Trusted Partners', '/dashboard', UserCheck],
+  ['Trusted Drivers', '/dashboard', UserCheck],
   ['Messages', '/find', MessageSquare],
   ['My Profile', '/dashboard', UserRound],
   ['Settings', '/dashboard', Settings],
