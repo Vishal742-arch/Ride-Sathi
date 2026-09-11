@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createDodoCheckoutSession } from '@/lib/dodo';
+import { calculateRoadRoute, calculateFare, LocationPoint } from '@/lib/location-service';
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,6 +12,9 @@ export async function POST(request: NextRequest) {
       passengerName,
       passengerEmail,
       passengerPhone,
+      pickupCoords,
+      dropCoords,
+      vehicleType = 'CAR',
     } = await request.json();
 
     if (!rideId) {
@@ -19,7 +23,34 @@ export async function POST(request: NextRequest) {
 
     const tripPin = Math.floor(1000 + Math.random() * 9000).toString();
     const bookingId = `book_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const fareAmount = 80 * Number(seats);
+
+    // Authoritative Server-side Route & Fare Calculation
+    let fareAmount = 80 * Number(seats);
+
+    if (pickupCoords?.latitude && dropCoords?.latitude) {
+      try {
+        const originPoint: LocationPoint = {
+          latitude: Number(pickupCoords.latitude),
+          longitude: Number(pickupCoords.longitude),
+          placeName: pickupCoords.placeName || 'Pickup Location',
+          formattedAddress: pickupCoords.formattedAddress || 'Pickup Location',
+          city: pickupCoords.city || 'Indore',
+        };
+        const destPoint: LocationPoint = {
+          latitude: Number(dropCoords.latitude),
+          longitude: Number(dropCoords.longitude),
+          placeName: dropCoords.placeName || 'Drop Location',
+          formattedAddress: dropCoords.formattedAddress || 'Drop Location',
+          city: dropCoords.city || 'Indore',
+        };
+
+        const routeInfo = await calculateRoadRoute(originPoint, destPoint);
+        const fareCalc = calculateFare(routeInfo.distanceKm, vehicleType === 'BIKE' ? 'BIKE' : 'CAR');
+        fareAmount = Math.max(20, Math.round(fareCalc.fareAmount * Number(seats)));
+      } catch (err) {
+        console.warn('[Book API] Server route verification warning:', err);
+      }
+    }
 
     // Get authenticated user (if logged in) for Supabase record
     let authenticatedUserId: string | null = null;
@@ -42,8 +73,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create Dodo Payments checkout session (server-side only, API key never reaches client)
-    const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://ride-sathi-nu.vercel.app'}/find?booking=${bookingId}`;
+    // Create Dodo Payments checkout session (server-side only)
+    const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/find?booking=${bookingId}`;
 
     const dodoSession = await createDodoCheckoutSession({
       amountInINR: fareAmount,

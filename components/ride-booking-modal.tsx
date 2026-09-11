@@ -84,8 +84,21 @@ export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
             </div>
 
             <div className="privacy-modal-body" style={{ display: 'grid', gap: 18 }}>
-              {/* Ride Summary */}
+              {/* Ride Summary & Location Confirmation */}
               <div className="booking-summary-box" style={{ background: '#f6fbf8', border: '1px solid #dbece2', padding: 16, borderRadius: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, paddingBottom: 8, borderBottom: '1px dashed #cde2d6' }}>
+                  <div>
+                    <span style={{ fontSize: 11, color: '#617d72', fontWeight: 600, display: 'block' }}>ROUTE CONFIRMATION</span>
+                    <strong style={{ fontSize: 13, color: '#087c64' }}>📍 {ride.origin} ➔ 🏁 {ride.destination}</strong>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    style={{ fontSize: 11, color: '#087c64', fontWeight: 700, background: '#e6f7ef', border: '1px solid #bce6d3', borderRadius: 8, padding: '2px 8px', cursor: 'pointer', height: 'fit-content' }}
+                  >
+                    Change Location
+                  </button>
+                </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                   <span style={{ fontSize: 12, color: '#617d72', fontWeight: 600 }}>DRIVER</span>
                   <strong style={{ fontSize: 13, color: '#173e34' }}>{ride.driver_name} (✓ Verified)</strong>

@@ -1,124 +1,19 @@
 'use client';
-import { CalendarDays, Car, ChevronDown, CheckCircle2, MapPin, Plus, ShieldCheck, Users, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-
-type Location = { id: string; name: string; city: string };
-
-function LocationPicker({
-  label,
-  value,
-  onSelect,
-  exclude,
-}: {
-  label: string;
-  value: Location | null;
-  onSelect: (location: Location | null) => void;
-  exclude?: string;
-}) {
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Location[]>([]);
-  const [open, setOpen] = useState(false);
-  const [status, setStatus] = useState('');
-  const area = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const close = (event: MouseEvent) => {
-      if (!area.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, []);
-
-  useEffect(() => {
-    if (!open || !query.trim()) {
-      setResults([]);
-      setStatus('');
-      return;
-    }
-    const controller = new AbortController();
-    const timer = setTimeout(async () => {
-      try {
-        const response = await fetch(`/api/locations?q=${encodeURIComponent(query)}`, {
-          signal: controller.signal,
-        });
-        const body = await response.json();
-        if (!response.ok) throw new Error(body.error);
-        setResults(body.filter((item: Location) => item.id !== exclude));
-        setStatus(body.length ? '' : 'No matching locations yet.');
-      } catch (error) {
-        if ((error as Error).name !== 'AbortError') setStatus('Connect Supabase to search location network.');
-      }
-    }, 220);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [query, open, exclude]);
-
-  return (
-    <div className="location-picker" ref={area}>
-      <span>{label}</span>
-      <div className="find-input">
-        <MapPin />
-        <input
-          value={value?.name ?? query}
-          onFocus={() => {
-            setOpen(true);
-            if (value) setQuery(value.name);
-          }}
-          onChange={event => {
-            onSelect(null);
-            setQuery(event.target.value);
-            setOpen(true);
-          }}
-          placeholder={label === 'FROM PICKUP' ? 'Select pickup zone' : 'Select destination zone'}
-          autoComplete="off"
-        />
-        {value && (
-          <button
-            type="button"
-            className="clear-location"
-            onClick={() => {
-              onSelect(null);
-              setQuery('');
-              setOpen(false);
-            }}
-          >
-            <X size={15} />
-          </button>
-        )}
-      </div>
-      {open && query && (
-        <div className="location-popover" role="listbox">
-          {results.map(location => (
-            <button
-              type="button"
-              role="option"
-              key={location.id}
-              onClick={() => {
-                onSelect(location);
-                setQuery('');
-                setOpen(false);
-              }}
-            >
-              <MapPin size={16} />
-              <span>
-                <b>{location.name}</b>
-                <small>{location.city}</small>
-              </span>
-            </button>
-          ))}
-          {status && <p>{status}</p>}
-        </div>
-      )}
-    </div>
-  );
-}
+import { CalendarDays, Car, ChevronDown, CheckCircle2, MapPin, Plus, ShieldCheck, Users, X, Route } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { RouteLocationPicker } from '@/components/route-location-picker';
+import { LocationPoint, RouteInfo, FareCalculation, calculateRoadRoute, calculateFare } from '@/lib/location-service';
 
 export default function OfferRide() {
-  const [vehicle, setVehicle] = useState('CAR');
-  const [from, setFrom] = useState<Location | null>(null);
-  const [to, setTo] = useState<Location | null>(null);
+  const [vehicle, setVehicle] = useState<'BIKE' | 'CAR'>('CAR');
+  const [from, setFrom] = useState<LocationPoint | null>(null);
+  const [to, setTo] = useState<LocationPoint | null>(null);
+
+  // Route & price calculation state
+  const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
+  const [fareInfo, setFareInfo] = useState<FareCalculation | null>(null);
+  const [routeLoading, setRouteLoading] = useState(false);
+
   const [departureDate, setDepartureDate] = useState('');
   const [seats, setSeats] = useState('3');
   const [price, setPrice] = useState('80');
@@ -126,10 +21,36 @@ export default function OfferRide() {
   const [result, setResult] = useState<{ rideId: string; message: string } | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
 
+  // Update route info and suggested price when locations or vehicle change
+  useEffect(() => {
+    if (!from || !to) {
+      setRouteInfo(null);
+      setFareInfo(null);
+      return;
+    }
+
+    async function updateRoute() {
+      setRouteLoading(true);
+      try {
+        const info = await calculateRoadRoute(from!, to!);
+        const fare = calculateFare(info.distanceKm, vehicle);
+        setRouteInfo(info);
+        setFareInfo(fare);
+        setPrice(String(Math.round(fare.fareAmount)));
+      } catch (err) {
+        console.error('Route calculation error:', err);
+      } finally {
+        setRouteLoading(false);
+      }
+    }
+
+    updateRoute();
+  }, [from, to, vehicle]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!from || !to) {
-      setErrorMessage('Please select both a pickup and destination location from the dropdown.');
+      setErrorMessage('Please select both a pickup and destination location.');
       return;
     }
     setErrorMessage('');
@@ -140,8 +61,13 @@ export default function OfferRide() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          fromLocation: from.name,
-          toLocation: to.name,
+          fromLocation: from.placeName,
+          toLocation: to.placeName,
+          pickupLatitude: from.latitude,
+          pickupLongitude: from.longitude,
+          dropLatitude: to.latitude,
+          dropLongitude: to.longitude,
+          distanceKm: routeInfo?.distanceKm,
           departureTime: departureDate || new Date().toISOString(),
           vehicleKind: vehicle,
           seatsAvailable: Number(seats),
@@ -171,10 +97,41 @@ export default function OfferRide() {
         </p>
 
         {!result ? (
-          <form onSubmit={handleSubmit} className="find-card mt-6">
-            <LocationPicker label="FROM PICKUP" value={from} onSelect={setFrom} exclude={to?.id} />
-            <div className="finder-line" />
-            <LocationPicker label="TO DESTINATION" value={to} onSelect={setTo} exclude={from?.id} />
+          <form onSubmit={handleSubmit} className="find-card mt-6" style={{ gap: 20 }}>
+            {/* Route Location Picker & Interactive Leaflet Map */}
+            <RouteLocationPicker
+              pickup={from}
+              drop={to}
+              onPickupChange={setFrom}
+              onDropChange={setTo}
+              polylineCoords={routeInfo?.polylineCoords || []}
+              routeLoading={routeLoading}
+            />
+
+            {/* Calculated Road Distance & Recommended Price */}
+            {from && to && routeInfo && fareInfo && (
+              <div style={{ background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: 16, padding: 14, display: 'grid', gap: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: '#166534', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Route size={16} /> ROUTE DISTANCE & SUGGESTED SEAT RATE
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, background: '#fff', padding: 12, borderRadius: 12, border: '1px solid #dcfce7' }}>
+                  <div>
+                    <span style={{ fontSize: 11, color: '#64748b', display: 'block', fontWeight: 600 }}>ROAD DISTANCE</span>
+                    <strong style={{ fontSize: 15, color: '#0f172a' }}>{routeInfo.formattedDistance}</strong>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: 11, color: '#64748b', display: 'block', fontWeight: 600 }}>ESTIMATED TIME</span>
+                    <strong style={{ fontSize: 15, color: '#0f172a' }}>{routeInfo.formattedDuration}</strong>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: 11, color: '#64748b', display: 'block', fontWeight: 600 }}>SUGGESTED PRICE</span>
+                    <strong style={{ fontSize: 16, color: '#087c64', fontWeight: 900 }}>₹{fareInfo.fareAmount} / seat</strong>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="find-options">
               <label>
@@ -229,14 +186,14 @@ export default function OfferRide() {
                   className={vehicle === 'BIKE' ? 'selected' : ''}
                   onClick={() => setVehicle('BIKE')}
                 >
-                  🏍️ Bike
+                  🏍️ Bike (₹2.5/km)
                 </button>
                 <button
                   type="button"
                   className={vehicle === 'CAR' ? 'selected' : ''}
                   onClick={() => setVehicle('CAR')}
                 >
-                  <Car size={18} /> Car
+                  <Car size={18} /> Car (₹4.5/km)
                 </button>
               </div>
             </fieldset>
