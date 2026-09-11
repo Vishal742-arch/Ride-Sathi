@@ -1,10 +1,11 @@
 'use client';
 import { CalendarDays, Car, ChevronDown, Clock, MapPin, MessageSquare, Navigation, Phone, Search, ShieldCheck, Users, X, Info, Route, AlertCircle } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { RideChat } from '@/components/ride-chat';
 import { RideBookingModal } from '@/components/ride-booking-modal';
 import { RouteLocationPicker } from '@/components/route-location-picker';
-import { LocationPoint, RouteInfo, FareCalculation, calculateRoadRoute, calculateFare } from '@/lib/location-service';
+import { LocationPoint, RouteInfo, FareCalculation, calculateRoadRoute, calculateFare, resolveLocationString } from '@/lib/location-service';
 import { formatPostedTime } from '@/lib/utils/format-posted-time';
 
 type RideItem = {
@@ -22,11 +23,13 @@ type RideItem = {
   created_at?: string;
 };
 
-export default function FindRide() {
+function FindRideContent() {
+  const searchParams = useSearchParams();
   const [vehicle, setVehicle] = useState<'BIKE' | 'CAR'>('CAR');
   const [message, setMessage] = useState('');
   const [pickup, setPickup] = useState<LocationPoint | null>(null);
   const [drop, setDrop] = useState<LocationPoint | null>(null);
+  const [travelDate, setTravelDate] = useState('');
 
   // Route & Fare calculation state
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
@@ -38,8 +41,36 @@ export default function FindRide() {
   const [rides, setRides] = useState<RideItem[]>([]);
   const [, setNow] = useState(Date.now());
 
+  // Handle incoming query params (from, to, date)
   useEffect(() => {
-    fetchRides();
+    const fromParam = searchParams.get('from');
+    const toParam = searchParams.get('to');
+    const dateParam = searchParams.get('date');
+
+    if (dateParam) {
+      setTravelDate(dateParam);
+    }
+
+    async function initFromParams() {
+      let pPoint: LocationPoint | null = null;
+      let dPoint: LocationPoint | null = null;
+
+      if (fromParam) {
+        pPoint = await resolveLocationString(fromParam);
+        if (pPoint) setPickup(pPoint);
+      }
+      if (toParam) {
+        dPoint = await resolveLocationString(toParam);
+        if (dPoint) setDrop(dPoint);
+      }
+
+      fetchRides(fromParam || '', toParam || '');
+      if (fromParam && toParam) {
+        setMessage(`Showing matches from ${fromParam} to ${toParam}.`);
+      }
+    }
+
+    initFromParams();
 
     // Live runtime ticker for relative timestamps
     const interval = setInterval(() => {
@@ -47,7 +78,7 @@ export default function FindRide() {
     }, 60000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [searchParams]);
 
   // Recalculate route & fare whenever pickup, drop or vehicle type changes
   useEffect(() => {
@@ -156,7 +187,7 @@ export default function FindRide() {
           )}
 
           <div className="find-options">
-            <label><span>DATE</span><div className="find-input"><CalendarDays/><input type="date" aria-label="Travel date"/></div></label>
+            <label><span>DATE</span><div className="find-input"><CalendarDays/><input type="date" aria-label="Travel date" value={travelDate} onChange={e => setTravelDate(e.target.value)} /></div></label>
             <label><span>PASSENGERS</span><div className="find-input"><Users/><select aria-label="Passengers" defaultValue="1"><option>1</option><option>2</option><option>3</option></select><ChevronDown size={15}/></div></label>
           </div>
 
@@ -228,3 +259,16 @@ export default function FindRide() {
     </main>
   );
 }
+
+export default function FindRide() {
+  return (
+    <Suspense fallback={
+      <div className="shell finder" style={{ padding: '60px 20px', textAlign: 'center' }}>
+        <p>Loading ride search...</p>
+      </div>
+    }>
+      <FindRideContent />
+    </Suspense>
+  );
+}
+

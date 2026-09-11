@@ -367,6 +367,27 @@ export function detectCityFromCoords(lat: number, lng: number): 'Indore' | 'Dewa
   return 'Indore';
 }
 
+export async function resolveLocationString(locationStr: string): Promise<LocationPoint | null> {
+  if (!locationStr || !locationStr.trim()) return null;
+  const q = locationStr.trim().toLowerCase();
+  
+  const preset = POPULAR_LOCATIONS.find(
+    p => p.placeName.toLowerCase() === q || p.formattedAddress.toLowerCase().includes(q) || p.placeName.toLowerCase().includes(q)
+  );
+  if (preset) return preset;
+
+  const results = await searchLocations(locationStr);
+  if (results.length > 0) return results[0];
+
+  return {
+    latitude: 22.7196,
+    longitude: 75.8577,
+    placeName: locationStr,
+    formattedAddress: `${locationStr}, MP`,
+    city: 'Indore',
+  };
+}
+
 function computeHaversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -390,3 +411,4 @@ function findClosestPreset(lat: number, lng: number) {
   }
   return closest ? { location: closest, distanceKm: minDistance } : null;
 }
+
