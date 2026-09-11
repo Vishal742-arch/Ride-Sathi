@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Compass, Map, MapPin, Navigation, Sparkles, X, Check, AlertCircle } from 'lucide-react';
+import { Compass, Map, MapPin, Navigation, X, ChevronDown } from 'lucide-react';
 import {
   LocationPoint,
   GPSResult,
@@ -34,7 +34,6 @@ export function RouteLocationPicker({
     result: GPSResult | null;
   }>({ loading: false, result: null });
 
-  // Autocomplete state
   const [pickupQuery, setPickupQuery] = useState('');
   const [pickupResults, setPickupResults] = useState<LocationPoint[]>([]);
   const [pickupOpen, setPickupOpen] = useState(false);
@@ -43,8 +42,9 @@ export function RouteLocationPicker({
   const [dropResults, setDropResults] = useState<LocationPoint[]>([]);
   const [dropOpen, setDropOpen] = useState(false);
 
-  // Map adjustment view state
+  const [popularExpanded, setPopularExpanded] = useState(true);
   const [mapMode, setMapMode] = useState<'view' | 'pickup' | 'drop'>('view');
+  const [showMap, setShowMap] = useState(true);
 
   const pickupRef = useRef<HTMLDivElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
@@ -89,18 +89,15 @@ export function RouteLocationPicker({
     return () => clearTimeout(timer);
   }, [dropQuery, dropOpen]);
 
-  // Handle GPS detect button
   const handleDetectGPS = async () => {
     setGpsState({ loading: true, result: null });
     const res = await getCurrentGPSLocation();
     setGpsState({ loading: false, result: res });
-
     if (res.location) {
       onPickupChange(res.location);
     }
   };
 
-  // Drag handlers for Leaflet map markers
   const handlePickupMarkerDrag = async (lat: number, lng: number) => {
     const updated = await reverseGeocode(lat, lng);
     onPickupChange(updated);
@@ -115,111 +112,133 @@ export function RouteLocationPicker({
     p => p.city.toUpperCase() === activeTab
   );
 
-  return (
-    <div className="route-location-picker-container" style={{ display: 'grid', gap: 20 }}>
-      {/* Pickup Location Box */}
-      <div ref={pickupRef} className="picker-box" style={{ position: 'relative' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <label style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', color: '#087c64', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <MapPin size={16} /> PICKUP LOCATION
-          </label>
+  const handlePopularSelect = (loc: LocationPoint) => {
+    if (!pickup) {
+      onPickupChange(loc);
+    } else if (!drop) {
+      onDropChange(loc);
+    } else {
+      onDropChange(loc);
+    }
+  };
 
+  return (
+    <div style={{ display: 'grid', gap: 16 }}>
+
+      {/* ── Pickup Input ── */}
+      <div ref={pickupRef} style={{ position: 'relative' }}>
+        <label style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          fontSize: 10, fontWeight: 800, letterSpacing: '0.08em',
+          color: '#087c64', marginBottom: 6, textTransform: 'uppercase',
+        }}>
+          <MapPin size={14} /> Pickup Location
+        </label>
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+          <div className="find-input" style={{ borderRadius: 14, flex: 1 }}>
+            <Compass size={17} style={{ color: '#087c64', flexShrink: 0 }} />
+            <input
+              type="text"
+              value={pickup ? pickup.placeName : pickupQuery}
+              onFocus={() => {
+                setPickupOpen(true);
+                if (pickup) setPickupQuery(pickup.placeName);
+              }}
+              onChange={e => {
+                onPickupChange(null);
+                setPickupQuery(e.target.value);
+                setPickupOpen(true);
+              }}
+              placeholder="Search pickup area or landmark..."
+              autoComplete="off"
+              style={{ background: 'transparent', border: 'none', outline: 'none', width: '100%', fontSize: 14 }}
+            />
+            {pickup && (
+              <button
+                type="button"
+                onClick={() => { onPickupChange(null); setPickupQuery(''); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', flexShrink: 0 }}
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+
+          {/* GPS Button */}
           <button
             type="button"
             onClick={handleDetectGPS}
             disabled={gpsState.loading}
+            title="Use my current location"
             style={{
               background: '#e6f7ef',
-              border: '1px solid #bce6d3',
-              borderRadius: 20,
-              padding: '4px 10px',
-              fontSize: 11,
+              border: '1.5px solid #bce6d3',
+              borderRadius: 14,
+              padding: '0 14px',
+              fontSize: 12,
               fontWeight: 700,
               color: '#087c64',
               display: 'flex',
               alignItems: 'center',
-              gap: 4,
+              gap: 5,
               cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
             }}
           >
-            <Navigation size={13} className={gpsState.loading ? 'animate-spin' : ''} />
-            {gpsState.loading ? 'Detecting GPS...' : '📍 Use My Current Location'}
+            <Navigation size={14} className={gpsState.loading ? 'animate-spin' : ''} />
+            {gpsState.loading ? 'Finding...' : '📍 My Location'}
           </button>
         </div>
 
-        <div className="find-input" style={{ borderRadius: 14 }}>
-          <Compass size={18} style={{ color: '#087c64' }} />
-          <input
-            type="text"
-            value={pickup ? pickup.placeName : pickupQuery}
-            onFocus={() => {
-              setPickupOpen(true);
-              if (pickup) setPickupQuery(pickup.placeName);
-            }}
-            onChange={e => {
-              onPickupChange(null);
-              setPickupQuery(e.target.value);
-              setPickupOpen(true);
-            }}
-            placeholder="Search pickup area, landmark or street..."
-            autoComplete="off"
-            style={{ background: 'transparent', border: 'none', outline: 'none', width: '100%', fontSize: 14 }}
-          />
-          {pickup && (
-            <button
-              type="button"
-              onClick={() => {
-                onPickupChange(null);
-                setPickupQuery('');
-              }}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}
-            >
-              <X size={16} />
-            </button>
-          )}
-        </div>
-
-        {/* GPS Accuracy Status Badge */}
-        {gpsState.result && (
-          <div style={{ marginTop: 8, fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}>
-            {gpsState.result.accuracyLevel === 'Excellent' && (
-              <span style={{ color: '#15803d', fontWeight: 700, background: '#f0fdf4', padding: '3px 8px', borderRadius: 8, border: '1px solid #bbf7d0' }}>
-                ✓ Location accuracy: Excellent (~{gpsState.result.accuracy}m)
-              </span>
-            )}
-            {gpsState.result.accuracyLevel === 'Approximate' && (
-              <span style={{ color: '#b45309', fontWeight: 700, background: '#fffbeb', padding: '3px 8px', borderRadius: 8, border: '1px solid #fef3c7' }}>
-                ⚡ Location accuracy: Approximate (~{gpsState.result.accuracy}m)
-              </span>
-            )}
-            {gpsState.result.accuracyLevel === 'Low' && (
-              <span style={{ color: '#b91c1c', fontWeight: 700, background: '#fef2f2', padding: '3px 8px', borderRadius: 8, border: '1px solid #fecaca' }}>
-                ⚠️ Location accuracy is low. Please move to an open area or adjust pin on map.
-              </span>
-            )}
-            {gpsState.result.error && (
-              <span style={{ color: '#dc2626', fontWeight: 600 }}>
-                {gpsState.result.error}
-              </span>
-            )}
+        {/* GPS accuracy badge */}
+        {gpsState.result && !gpsState.result.error && (
+          <div style={{ marginTop: 5, fontSize: 11 }}>
+            <span style={{
+              color: gpsState.result.accuracyLevel === 'Excellent' ? '#15803d'
+                : gpsState.result.accuracyLevel === 'Approximate' ? '#b45309' : '#b91c1c',
+              fontWeight: 700,
+              background: gpsState.result.accuracyLevel === 'Excellent' ? '#f0fdf4'
+                : gpsState.result.accuracyLevel === 'Approximate' ? '#fffbeb' : '#fef2f2',
+              padding: '2px 8px', borderRadius: 8,
+            }}>
+              {gpsState.result.accuracyLevel === 'Excellent' && `✓ GPS Excellent (~${gpsState.result.accuracy}m)`}
+              {gpsState.result.accuracyLevel === 'Approximate' && `⚡ GPS Approximate (~${gpsState.result.accuracy}m) — fine-tune pin on map`}
+              {gpsState.result.accuracyLevel === 'Low' && `⚠️ GPS low accuracy — drag pin on map to correct`}
+            </span>
+          </div>
+        )}
+        {gpsState.result?.error && (
+          <div style={{ marginTop: 5, fontSize: 11, color: '#dc2626', fontWeight: 600 }}>
+            {gpsState.result.error}
           </div>
         )}
 
-        {/* Pickup Autocomplete Results */}
+        {/* Pickup Autocomplete Dropdown */}
         {pickupOpen && pickupQuery && (
-          <div className="location-popover" style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: '#fff', borderRadius: 14, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', border: '1px solid #e2e8f0', marginTop: 4, maxHeight: 220, overflowY: 'auto' }}>
-            {pickupResults.map((loc, idx) => (
+          <div style={{
+            position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
+            background: '#fff', borderRadius: 14, marginTop: 4,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.14)', border: '1px solid #e2e8f0',
+            maxHeight: 240, overflowY: 'auto',
+          }}>
+            {pickupResults.length === 0 ? (
+              <div style={{ padding: '12px 16px', fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>
+                Searching...
+              </div>
+            ) : pickupResults.map((loc, idx) => (
               <button
                 key={`${loc.placeName}-${idx}`}
                 type="button"
-                onClick={() => {
-                  onPickupChange(loc);
-                  setPickupQuery('');
-                  setPickupOpen(false);
+                onClick={() => { onPickupChange(loc); setPickupQuery(''); setPickupOpen(false); }}
+                style={{
+                  width: '100%', textAlign: 'left', padding: '10px 14px',
+                  border: 'none', borderBottom: '1px solid #f1f5f9',
+                  background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
                 }}
-                style={{ width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderBottom: '1px solid #f1f5f9', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
               >
-                <MapPin size={16} style={{ color: '#087c64' }} />
+                <MapPin size={15} style={{ color: '#087c64', flexShrink: 0 }} />
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>{loc.placeName}</div>
                   <div style={{ fontSize: 11, color: '#64748b' }}>{loc.formattedAddress}</div>
@@ -230,16 +249,45 @@ export function RouteLocationPicker({
         )}
       </div>
 
-      {/* Drop Location Box */}
-      <div ref={dropRef} className="picker-box" style={{ position: 'relative' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <label style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', color: '#e11d48', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <MapPin size={16} /> DESTINATION DROP
-          </label>
+      {/* ── Route Visual Connector ── */}
+      {(pickup || drop) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 8px', background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#087c64', border: '2px solid #fff', boxShadow: '0 0 0 2px #087c64' }} />
+            <div style={{ width: 2, height: 18, background: 'linear-gradient(#087c64, #e11d48)', borderRadius: 2 }} />
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#e11d48', border: '2px solid #fff', boxShadow: '0 0 0 2px #e11d48' }} />
+          </div>
+          <div style={{ flex: 1, fontSize: 12, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, color: '#087c64', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {pickup ? pickup.placeName : <span style={{ color: '#94a3b8', fontWeight: 400 }}>Pickup not set</span>}
+            </div>
+            <div style={{ fontWeight: 700, color: '#e11d48', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {drop ? drop.placeName : <span style={{ color: '#94a3b8', fontWeight: 400 }}>Destination not set</span>}
+            </div>
+          </div>
+          {routeLoading && (
+            <span style={{ fontSize: 11, color: '#087c64', fontWeight: 700, flexShrink: 0 }}>Calculating...</span>
+          )}
+          {pickup && drop && !routeLoading && (
+            <span style={{ fontSize: 11, fontWeight: 800, color: '#087c64', background: '#f0fdf4', padding: '3px 10px', borderRadius: 20, border: '1px solid #bbf7d0', flexShrink: 0 }}>
+              Route set ✓
+            </span>
+          )}
         </div>
+      )}
+
+      {/* ── Drop Input ── */}
+      <div ref={dropRef} style={{ position: 'relative' }}>
+        <label style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          fontSize: 10, fontWeight: 800, letterSpacing: '0.08em',
+          color: '#e11d48', marginBottom: 6, textTransform: 'uppercase',
+        }}>
+          <MapPin size={14} /> Destination / Drop
+        </label>
 
         <div className="find-input" style={{ borderRadius: 14 }}>
-          <Compass size={18} style={{ color: '#e11d48' }} />
+          <Compass size={17} style={{ color: '#e11d48', flexShrink: 0 }} />
           <input
             type="text"
             value={drop ? drop.placeName : dropQuery}
@@ -252,39 +300,45 @@ export function RouteLocationPicker({
               setDropQuery(e.target.value);
               setDropOpen(true);
             }}
-            placeholder="Search destination, landmark or area..."
+            placeholder="Search destination, area or landmark..."
             autoComplete="off"
             style={{ background: 'transparent', border: 'none', outline: 'none', width: '100%', fontSize: 14 }}
           />
           {drop && (
             <button
               type="button"
-              onClick={() => {
-                onDropChange(null);
-                setDropQuery('');
-              }}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}
+              onClick={() => { onDropChange(null); setDropQuery(''); }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', flexShrink: 0 }}
             >
               <X size={16} />
             </button>
           )}
         </div>
 
-        {/* Drop Autocomplete Results */}
+        {/* Drop Autocomplete Dropdown */}
         {dropOpen && dropQuery && (
-          <div className="location-popover" style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: '#fff', borderRadius: 14, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', border: '1px solid #e2e8f0', marginTop: 4, maxHeight: 220, overflowY: 'auto' }}>
-            {dropResults.map((loc, idx) => (
+          <div style={{
+            position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
+            background: '#fff', borderRadius: 14, marginTop: 4,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.14)', border: '1px solid #e2e8f0',
+            maxHeight: 240, overflowY: 'auto',
+          }}>
+            {dropResults.length === 0 ? (
+              <div style={{ padding: '12px 16px', fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>
+                Searching...
+              </div>
+            ) : dropResults.map((loc, idx) => (
               <button
                 key={`${loc.placeName}-${idx}`}
                 type="button"
-                onClick={() => {
-                  onDropChange(loc);
-                  setDropQuery('');
-                  setDropOpen(false);
+                onClick={() => { onDropChange(loc); setDropQuery(''); setDropOpen(false); }}
+                style={{
+                  width: '100%', textAlign: 'left', padding: '10px 14px',
+                  border: 'none', borderBottom: '1px solid #f1f5f9',
+                  background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
                 }}
-                style={{ width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderBottom: '1px solid #f1f5f9', background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
               >
-                <MapPin size={16} style={{ color: '#e11d48' }} />
+                <MapPin size={15} style={{ color: '#e11d48', flexShrink: 0 }} />
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>{loc.placeName}</div>
                   <div style={{ fontSize: 11, color: '#64748b' }}>{loc.formattedAddress}</div>
@@ -295,116 +349,188 @@ export function RouteLocationPicker({
         )}
       </div>
 
-      {/* Popular Locations Tabs (Indore, Dewas, Ujjain) */}
-      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 16, padding: 14 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+      {/* ── Popular Locations Panel ── */}
+      <div style={{
+        background: '#f8fafc', border: '1px solid #e2e8f0',
+        borderRadius: 16, overflow: 'hidden',
+      }}>
+        <button
+          type="button"
+          onClick={() => setPopularExpanded(v => !v)}
+          style={{
+            width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '12px 14px', background: 'none', border: 'none', cursor: 'pointer',
+          }}
+        >
           <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
             ⭐ POPULAR SUGGESTED LOCATIONS
           </span>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {(['INDORE', 'DEWAS', 'UJJAIN'] as const).map(city => (
+          <ChevronDown
+            size={16}
+            style={{
+              color: '#475569',
+              transform: popularExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 0.2s ease',
+            }}
+          />
+        </button>
+
+        {popularExpanded && (
+          <div style={{ padding: '0 14px 14px' }}>
+            {/* City Tabs */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+              {(['INDORE', 'DEWAS', 'UJJAIN'] as const).map(city => (
+                <button
+                  key={city}
+                  type="button"
+                  onClick={() => setActiveTab(city)}
+                  style={{
+                    padding: '5px 14px', borderRadius: 20,
+                    fontSize: 12, fontWeight: 700,
+                    border: activeTab === city ? '1.5px solid #087c64' : '1.5px solid #cbd5e1',
+                    background: activeTab === city ? '#087c64' : '#fff',
+                    color: activeTab === city ? '#fff' : '#475569',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {city}
+                </button>
+              ))}
+            </div>
+
+            {/* Location chips — larger, grid layout for easy tapping */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
+              {popularByCity.map((loc, i) => (
+                <button
+                  key={`${loc.placeName}-${i}`}
+                  type="button"
+                  onClick={() => handlePopularSelect(loc)}
+                  style={{
+                    background: '#fff',
+                    border: '1.5px solid #cbd5e1',
+                    borderRadius: 12,
+                    padding: '9px 12px',
+                    fontSize: 12, fontWeight: 600,
+                    color: '#334155', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    textAlign: 'left',
+                    transition: 'border-color 0.15s, background 0.15s',
+                  }}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = '#087c64';
+                    (e.currentTarget as HTMLButtonElement).style.background = '#f0fdf4';
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = '#cbd5e1';
+                    (e.currentTarget as HTMLButtonElement).style.background = '#fff';
+                  }}
+                >
+                  <MapPin size={13} style={{ color: '#087c64', flexShrink: 0 }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {loc.placeName}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <p style={{ fontSize: 10, color: '#94a3b8', marginTop: 8, marginBottom: 0 }}>
+              Tap a chip → sets pickup first, then destination automatically.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Interactive Map Section ── */}
+      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 16, overflow: 'hidden' }}>
+        {/* Map Header */}
+        <div style={{ padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => setShowMap(v => !v)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+          >
+            <Map size={15} style={{ color: '#334155' }} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>
+              Interactive Map & Route Preview
+            </span>
+            <ChevronDown
+              size={14}
+              style={{
+                color: '#64748b',
+                transform: showMap ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s ease',
+              }}
+            />
+          </button>
+
+          {showMap && (
+            <div style={{ display: 'flex', gap: 8 }}>
               <button
-                key={city}
                 type="button"
-                onClick={() => setActiveTab(city)}
+                onClick={() => setMapMode(mapMode === 'pickup' ? 'view' : 'pickup')}
                 style={{
-                  padding: '3px 10px',
-                  borderRadius: 12,
-                  fontSize: 11,
-                  fontWeight: 700,
-                  border: activeTab === city ? '1px solid #087c64' : '1px solid #cbd5e1',
-                  background: activeTab === city ? '#087c64' : '#fff',
-                  color: activeTab === city ? '#fff' : '#475569',
-                  cursor: 'pointer',
+                  fontSize: 11, padding: '5px 10px', borderRadius: 8,
+                  border: '1.5px solid #087c64',
+                  background: mapMode === 'pickup' ? '#087c64' : '#fff',
+                  color: mapMode === 'pickup' ? '#fff' : '#087c64',
+                  fontWeight: 700, cursor: 'pointer',
                 }}
               >
-                {city}
+                📍 Adjust Pickup Pin
               </button>
-            ))}
-          </div>
+              <button
+                type="button"
+                onClick={() => setMapMode(mapMode === 'drop' ? 'view' : 'drop')}
+                style={{
+                  fontSize: 11, padding: '5px 10px', borderRadius: 8,
+                  border: '1.5px solid #e11d48',
+                  background: mapMode === 'drop' ? '#e11d48' : '#fff',
+                  color: mapMode === 'drop' ? '#fff' : '#e11d48',
+                  fontWeight: 700, cursor: 'pointer',
+                }}
+              >
+                🏁 Adjust Drop Pin
+              </button>
+            </div>
+          )}
         </div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 120, overflowY: 'auto' }}>
-          {popularByCity.map((loc, i) => (
-            <button
-              key={`${loc.placeName}-${i}`}
-              type="button"
-              onClick={() => {
-                if (!pickup) onPickupChange(loc);
-                else onDropChange(loc);
-              }}
-              style={{
-                background: '#fff',
-                border: '1px solid #cbd5e1',
-                borderRadius: 20,
-                padding: '4px 10px',
-                fontSize: 11,
-                fontWeight: 600,
-                color: '#334155',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-              }}
-            >
-              <MapPin size={12} style={{ color: '#087c64' }} /> {loc.placeName}
-            </button>
-          ))}
-        </div>
+        {/* Map Body */}
+        {showMap && (
+          <div style={{ borderTop: '1px solid #e2e8f0' }}>
+            {/* Hint banner when a mode is active */}
+            {mapMode !== 'view' && (
+              <div style={{
+                padding: '8px 14px', fontSize: 12, fontWeight: 700,
+                color: mapMode === 'pickup' ? '#087c64' : '#e11d48',
+                background: mapMode === 'pickup' ? '#f0fdf4' : '#fff1f2',
+                borderBottom: '1px solid #e2e8f0',
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}>
+                {mapMode === 'pickup'
+                  ? '📍 Drag the green pin to fine-tune your pickup location'
+                  : '🏁 Drag the red pin to fine-tune your drop location'}
+                <button
+                  type="button"
+                  onClick={() => setMapMode('view')}
+                  style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+            <LocationMap
+              pickup={pickup}
+              drop={drop}
+              polylineCoords={polylineCoords}
+              onPickupDragEnd={handlePickupMarkerDrag}
+              onDropDragEnd={handleDropMarkerDrag}
+              interactiveMode={mapMode}
+              height={280}
+            />
+          </div>
+        )}
       </div>
 
-      {/* Interactive Leaflet Map Preview with Draggable Markers */}
-      <div style={{ display: 'grid', gap: 8 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Map size={16} /> Interactive Map & Route Preview
-          </span>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              type="button"
-              onClick={() => setMapMode('pickup')}
-              style={{
-                fontSize: 11,
-                padding: '4px 8px',
-                borderRadius: 8,
-                border: '1px solid #087c64',
-                background: mapMode === 'pickup' ? '#087c64' : '#fff',
-                color: mapMode === 'pickup' ? '#fff' : '#087c64',
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              Adjust Pickup Pin
-            </button>
-            <button
-              type="button"
-              onClick={() => setMapMode('drop')}
-              style={{
-                fontSize: 11,
-                padding: '4px 8px',
-                borderRadius: 8,
-                border: '1px solid #e11d48',
-                background: mapMode === 'drop' ? '#e11d48' : '#fff',
-                color: mapMode === 'drop' ? '#fff' : '#e11d48',
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              Adjust Drop Pin
-            </button>
-          </div>
-        </div>
-
-        <LocationMap
-          pickup={pickup}
-          drop={drop}
-          polylineCoords={polylineCoords}
-          onPickupDragEnd={handlePickupMarkerDrag}
-          onDropDragEnd={handleDropMarkerDrag}
-          interactiveMode={mapMode}
-          height={280}
-        />
-      </div>
     </div>
   );
 }

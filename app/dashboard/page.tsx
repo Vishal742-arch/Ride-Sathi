@@ -19,6 +19,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { formatPostedTime } from '@/lib/utils/format-posted-time';
+import { DashboardLocationPicker } from '@/components/dashboard-location-picker';
 
 interface UpcomingCommute {
   id: string;
@@ -113,6 +114,9 @@ export default function Dashboard() {
     }
   };
 
+  const [fromLocation, setFromLocation] = useState('');
+  const [toLocation, setToLocation] = useState('');
+
   return (
     <main className="shell py-8 space-y-10">
       {/* 1. Dashboard Greeting & Search Form */}
@@ -135,20 +139,26 @@ export default function Dashboard() {
 
         {/* Inline Quick Search Form */}
         <form action="/find" method="GET" className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-emerald-50/70 p-4 rounded-2xl border border-emerald-100">
-          <div>
-            <label className="block text-[10px] font-bold tracking-wider text-emerald-800 uppercase mb-1">From</label>
-            <input type="text" name="from" placeholder="Select pickup location" className="w-full bg-white border border-emerald-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-emerald-600 text-slate-800" />
-          </div>
-          <div>
-            <label className="block text-[10px] font-bold tracking-wider text-emerald-800 uppercase mb-1">To</label>
-            <input type="text" name="to" placeholder="Select destination" className="w-full bg-white border border-emerald-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-emerald-600 text-slate-800" />
-          </div>
+          <DashboardLocationPicker
+            label="From"
+            name="from"
+            placeholder="Select pickup location"
+            value={fromLocation}
+            onChange={setFromLocation}
+          />
+          <DashboardLocationPicker
+            label="To"
+            name="to"
+            placeholder="Select destination"
+            value={toLocation}
+            onChange={setToLocation}
+          />
           <div>
             <label className="block text-[10px] font-bold tracking-wider text-emerald-800 uppercase mb-1">Date</label>
-            <input type="date" name="date" className="w-full bg-white border border-emerald-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-emerald-600 text-slate-800" />
+            <input type="date" name="date" className="w-full bg-white border border-emerald-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-emerald-600 text-slate-800 font-medium" />
           </div>
           <div className="flex items-end">
-            <button type="submit" className="w-full bg-amber-400 hover:bg-amber-500 text-slate-900 font-extrabold text-sm py-2.5 px-4 rounded-xl transition flex items-center justify-center gap-2">
+            <button type="submit" className="w-full bg-amber-400 hover:bg-amber-500 text-slate-900 font-extrabold text-sm py-2.5 px-4 rounded-xl transition flex items-center justify-center gap-2 cursor-pointer shadow-sm">
               <Search size={16} /> Find Available Rides
             </button>
           </div>
