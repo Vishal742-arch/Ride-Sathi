@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { LocationPoint } from '@/lib/location-service';
 
 interface LocationMapProps {
@@ -11,6 +11,13 @@ interface LocationMapProps {
   onMapClick?: (lat: number, lng: number) => void;
   interactiveMode?: 'pickup' | 'drop' | 'view';
   height?: string | number;
+}
+
+declare global {
+  interface Window {
+    google?: any;
+    initGoogleMapsScript?: () => void;
+  }
 }
 
 export function LocationMap({
@@ -28,170 +35,258 @@ export function LocationMap({
   const pickupMarkerRef = useRef<any>(null);
   const dropMarkerRef = useRef<any>(null);
   const polylineRef = useRef<any>(null);
+  const [mapLoaded, setMapLoaded] = useState(false);
+
+  const apiKey =
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
+    process.env.GOOGLE_MAPS_API_KEY ||
+    process.env.MAPS_API_KEY ||
+    '';
 
   useEffect(() => {
     if (typeof window === 'undefined' || !containerRef.current) return;
 
-    let isSubscribed = true;
+    if (window.google?.maps) {
+      setMapLoaded(true);
+      return;
+    }
 
-    // Dynamically load Leaflet JS & CSS
-    import('leaflet').then(L => {
-      if (!isSubscribed || !containerRef.current) return;
+    if (!apiKey) {
+      return;
+    }
 
-      // Fix Leaflet marker icon paths in Next.js
-      delete (L.Icon.Default.prototype as any)._getIconUrl;
-      L.Icon.Default.mergeOptions({
-        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-        iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-      });
+    const scriptId = 'google-maps-js-sdk';
+    let existingScript = document.getElementById(scriptId) as HTMLScriptElement;
 
-      // Custom SVG Pin Icons for Pickup (Emerald/Green) and Drop (Rose/Red)
-      const greenIcon = L.divIcon({
-        className: 'custom-map-pin pickup-pin',
-        html: `<div style="background:#087c64;color:#fff;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(8,124,100,0.4);border:2px solid #fff;font-weight:bold;font-size:14px;">📍</div>`,
-        iconSize: [32, 32],
-        iconAnchor: [16, 32],
-      });
+    if (!existingScript) {
+      existingScript = document.createElement('script');
+      existingScript.id = scriptId;
+      existingScript.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+      existingScript.async = true;
+      existingScript.defer = true;
+      document.head.appendChild(existingScript);
+    }
 
-      const redIcon = L.divIcon({
-        className: 'custom-map-pin drop-pin',
-        html: `<div style="background:#e11d48;color:#fff;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(225,29,72,0.4);border:2px solid #fff;font-weight:bold;font-size:14px;">🏁</div>`,
-        iconSize: [32, 32],
-        iconAnchor: [16, 32],
-      });
-
-      // Initialize map instance if not existing
-      if (!mapRef.current) {
-        const defaultCenter: [number, number] = pickup
-          ? [pickup.latitude, pickup.longitude]
-          : drop
-          ? [drop.latitude, drop.longitude]
-          : [22.7196, 75.8577]; // Indore default center
-
-        const map = L.map(containerRef.current, {
-          center: defaultCenter,
-          zoom: 13,
-          zoomControl: true,
-        });
-
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-          maxZoom: 19,
-        }).addTo(map);
-
-        map.on('click', (e: any) => {
-          if (onMapClick) {
-            onMapClick(e.latlng.lat, e.latlng.lng);
-          }
-        });
-
-        mapRef.current = map;
+    const checkLoaded = setInterval(() => {
+      if (window.google?.maps) {
+        setMapLoaded(true);
+        clearInterval(checkLoaded);
       }
+    }, 100);
 
-      const map = mapRef.current;
-
-      // Update Pickup Marker
-      if (pickup) {
-        if (!pickupMarkerRef.current) {
-          const marker = L.marker([pickup.latitude, pickup.longitude], {
-            icon: greenIcon,
-            draggable: Boolean(onPickupDragEnd),
-          }).addTo(map);
-
-          marker.bindTooltip(`<b>Pickup:</b> ${pickup.placeName}`, { permanent: false });
-
-          marker.on('dragend', (e: any) => {
-            const { lat, lng } = e.target.getLatLng();
-            if (onPickupDragEnd) onPickupDragEnd(lat, lng);
-          });
-
-          pickupMarkerRef.current = marker;
-        } else {
-          pickupMarkerRef.current.setLatLng([pickup.latitude, pickup.longitude]);
-          pickupMarkerRef.current.setDragging(Boolean(onPickupDragEnd));
-        }
-      } else if (pickupMarkerRef.current) {
-        map.removeLayer(pickupMarkerRef.current);
-        pickupMarkerRef.current = null;
-      }
-
-      // Update Drop Marker
-      if (drop) {
-        if (!dropMarkerRef.current) {
-          const marker = L.marker([drop.latitude, drop.longitude], {
-            icon: redIcon,
-            draggable: Boolean(onDropDragEnd),
-          }).addTo(map);
-
-          marker.bindTooltip(`<b>Drop:</b> ${drop.placeName}`, { permanent: false });
-
-          marker.on('dragend', (e: any) => {
-            const { lat, lng } = e.target.getLatLng();
-            if (onDropDragEnd) onDropDragEnd(lat, lng);
-          });
-
-          dropMarkerRef.current = marker;
-        } else {
-          dropMarkerRef.current.setLatLng([drop.latitude, drop.longitude]);
-          dropMarkerRef.current.setDragging(Boolean(onDropDragEnd));
-        }
-      } else if (dropMarkerRef.current) {
-        map.removeLayer(dropMarkerRef.current);
-        dropMarkerRef.current = null;
-      }
-
-      // Update Route Polyline
-      if (polylineRef.current) {
-        map.removeLayer(polylineRef.current);
-        polylineRef.current = null;
-      }
-
-      if (polylineCoords.length > 0) {
-        const polyline = L.polyline(polylineCoords, {
-          color: '#087c64',
-          weight: 5,
-          opacity: 0.85,
-          dashArray: '2, 6',
-        }).addTo(map);
-
-        polylineRef.current = polyline;
-        map.fitBounds(polyline.getBounds(), { padding: [40, 40] });
-      } else if (pickup && drop) {
-        const bounds = L.latLngBounds(
-          [pickup.latitude, pickup.longitude],
-          [drop.latitude, drop.longitude]
-        );
-        map.fitBounds(bounds, { padding: [50, 50] });
-      } else if (pickup) {
-        map.setView([pickup.latitude, pickup.longitude], 14);
-      } else if (drop) {
-        map.setView([drop.latitude, drop.longitude], 14);
-      }
-    });
-
-    return () => {
-      isSubscribed = false;
-    };
-  }, [pickup, drop, polylineCoords, onPickupDragEnd, onDropDragEnd, onMapClick]);
+    return () => clearInterval(checkLoaded);
+  }, [apiKey]);
 
   useEffect(() => {
-    return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
+    if (!mapLoaded || !window.google?.maps || !containerRef.current) return;
+
+    const google = window.google;
+
+    const defaultCenter = pickup
+      ? { lat: pickup.latitude, lng: pickup.longitude }
+      : drop
+      ? { lat: drop.latitude, lng: drop.longitude }
+      : { lat: 22.7196, lng: 75.8577 }; // Indore default
+
+    if (!mapRef.current) {
+      const map = new google.maps.Map(containerRef.current, {
+        center: defaultCenter,
+        zoom: 13,
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: false,
+        zoomControl: true,
+        styles: [
+          { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+        ],
+      });
+
+      if (onMapClick) {
+        map.addListener('click', (e: any) => {
+          onMapClick(e.latLng.lat(), e.latLng.lng());
+        });
       }
-    };
-  }, []);
+
+      mapRef.current = map;
+    }
+
+    const map = mapRef.current;
+    const bounds = new google.maps.LatLngBounds();
+
+    // Pickup Marker (Emerald Green Pin)
+    if (pickup) {
+      const pickupPos = { lat: pickup.latitude, lng: pickup.longitude };
+      bounds.extend(pickupPos);
+
+      if (!pickupMarkerRef.current) {
+        const marker = new google.maps.Marker({
+          position: pickupPos,
+          map,
+          title: `Pickup: ${pickup.placeName}`,
+          draggable: Boolean(onPickupDragEnd),
+          icon: {
+            path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
+            fillColor: '#087c64',
+            fillOpacity: 1,
+            strokeColor: '#ffffff',
+            strokeWeight: 2,
+            scale: 1.8,
+            anchor: new google.maps.Point(12, 22),
+          },
+        });
+
+        if (onPickupDragEnd) {
+          marker.addListener('dragend', (e: any) => {
+            onPickupDragEnd(e.latLng.lat(), e.latLng.lng());
+          });
+        }
+        pickupMarkerRef.current = marker;
+      } else {
+        pickupMarkerRef.current.setPosition(pickupPos);
+        pickupMarkerRef.current.setDraggable(Boolean(onPickupDragEnd));
+      }
+    } else if (pickupMarkerRef.current) {
+      pickupMarkerRef.current.setMap(null);
+      pickupMarkerRef.current = null;
+    }
+
+    // Drop Marker (Rose Red Pin)
+    if (drop) {
+      const dropPos = { lat: drop.latitude, lng: drop.longitude };
+      bounds.extend(dropPos);
+
+      if (!dropMarkerRef.current) {
+        const marker = new google.maps.Marker({
+          position: dropPos,
+          map,
+          title: `Drop: ${drop.placeName}`,
+          draggable: Boolean(onDropDragEnd),
+          icon: {
+            path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
+            fillColor: '#e11d48',
+            fillOpacity: 1,
+            strokeColor: '#ffffff',
+            strokeWeight: 2,
+            scale: 1.8,
+            anchor: new google.maps.Point(12, 22),
+          },
+        });
+
+        if (onDropDragEnd) {
+          marker.addListener('dragend', (e: any) => {
+            onDropDragEnd(e.latLng.lat(), e.latLng.lng());
+          });
+        }
+        dropMarkerRef.current = marker;
+      } else {
+        dropMarkerRef.current.setPosition(dropPos);
+        dropMarkerRef.current.setDraggable(Boolean(onDropDragEnd));
+      }
+    } else if (dropMarkerRef.current) {
+      dropMarkerRef.current.setMap(null);
+      dropMarkerRef.current = null;
+    }
+
+    // Polyline Route Rendering
+    if (polylineRef.current) {
+      polylineRef.current.setMap(null);
+      polylineRef.current = null;
+    }
+
+    if (polylineCoords.length > 0) {
+      const googlePath = polylineCoords.map(c => ({ lat: c[0], lng: c[1] }));
+      googlePath.forEach(pt => bounds.extend(pt));
+
+      const polyline = new google.maps.Polyline({
+        path: googlePath,
+        geodesic: true,
+        strokeColor: '#087c64',
+        strokeOpacity: 0.85,
+        strokeWeight: 5,
+        map,
+      });
+
+      polylineRef.current = polyline;
+      map.fitBounds(bounds, { top: 40, bottom: 40, left: 40, right: 40 });
+    } else if (pickup && drop) {
+      map.fitBounds(bounds, { top: 50, bottom: 50, left: 50, right: 50 });
+    } else if (pickup) {
+      map.setCenter({ lat: pickup.latitude, lng: pickup.longitude });
+      map.setZoom(14);
+    } else if (drop) {
+      map.setCenter({ lat: drop.latitude, lng: drop.longitude });
+      map.setZoom(14);
+    }
+  }, [mapLoaded, pickup, drop, polylineCoords, onPickupDragEnd, onDropDragEnd, onMapClick]);
 
   return (
-    <div className="location-map-container" style={{ position: 'relative', width: '100%', height, borderRadius: 16, overflow: 'hidden', border: '1px solid #dcece2', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }}>
-      {/* Import Leaflet CSS via standard CDN tag */}
-      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <div
+      className="location-map-container"
+      style={{
+        position: 'relative',
+        width: '100%',
+        height,
+        borderRadius: 16,
+        overflow: 'hidden',
+        border: '1px solid #dcece2',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
+        background: '#f8faf9',
+      }}
+    >
       <div ref={containerRef} style={{ width: '100%', height: '100%', zIndex: 1 }} />
-      {interactiveMode !== 'view' && (
-        <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 999, background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(8px)', padding: '6px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, color: '#087c64', border: '1px solid #c3e6d8' }}>
-          {interactiveMode === 'pickup' ? '📍 Drag green pin to adjust pickup' : '🏁 Drag red pin to adjust drop location'}
+
+      {!mapLoaded && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'linear-gradient(135deg, #f0fdf4 0%, #e6f7ef 100%)',
+            padding: 20,
+            textAlign: 'center',
+            gap: 8,
+          }}
+        >
+          <div style={{ fontSize: 24 }}>🗺️</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#087c64' }}>
+            Google Maps Platform — Interactive Route Map
+          </div>
+          {pickup && (
+            <div style={{ fontSize: 11, color: '#166534', fontWeight: 600 }}>
+              📍 <b>Pickup:</b> {pickup.placeName} ({pickup.city})
+            </div>
+          )}
+          {drop && (
+            <div style={{ fontSize: 11, color: '#9f1239', fontWeight: 600 }}>
+              🏁 <b>Drop:</b> {drop.placeName} ({drop.city})
+            </div>
+          )}
+        </div>
+      )}
+
+      {interactiveMode !== 'view' && mapLoaded && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 12,
+            left: 12,
+            zIndex: 999,
+            background: 'rgba(255,255,255,0.92)',
+            backdropFilter: 'blur(8px)',
+            padding: '6px 12px',
+            borderRadius: 20,
+            fontSize: 12,
+            fontWeight: 700,
+            color: '#087c64',
+            border: '1px solid #c3e6d8',
+          }}
+        >
+          {interactiveMode === 'pickup'
+            ? '📍 Drag green Google pin to adjust pickup'
+            : '🏁 Drag red Google pin to adjust drop location'}
         </div>
       )}
     </div>

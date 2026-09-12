@@ -53,6 +53,6 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // If search filter produced no results, return all available active rides so user is never empty
-  return NextResponse.json({ rides: filteredRides.length > 0 ? filteredRides : allRides });
+  // Return filtered rides (or empty array if no rides match search parameters)
+  return NextResponse.json({ rides: filteredRides });
 }

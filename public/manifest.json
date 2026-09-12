@@ -1,7 +1,7 @@
 {
-  "name": "Ride Sathi",
-  "short_name": "Ride Sathi",
-  "description": "Affordable verified shared rides across Indore, Dewas and nearby cities.",
+  "name": "Ride With Me",
+  "short_name": "Ride With Me",
+  "description": "Affordable verified shared rides across Indore, Dewas, Ujjain and nearby cities.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

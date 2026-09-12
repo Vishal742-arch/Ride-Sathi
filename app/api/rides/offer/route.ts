@@ -15,9 +15,29 @@ export async function POST(request: NextRequest) {
       ? new Date(departureTime).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })
       : 'Today, 08:30 AM';
 
+    const supabase = await createClient();
+    let driverName = 'You (Driver ✓)';
+    let driverId: string | null = null;
+
+    if (supabase) {
+      const { data: userData } = await supabase.auth.getUser();
+      if (userData?.user) {
+        driverId = userData.user.id;
+        driverName = userData.user.user_metadata?.display_name || userData.user.user_metadata?.full_name || userData.user.email?.split('@')[0] || 'Verified Driver';
+        
+        await supabase.from('rides').insert({
+          id: rideId,
+          driver_id: driverId,
+          available_seats: Number(seatsAvailable) || 3,
+          departure_time: new Date(departureTime || Date.now()).toISOString(),
+          status: 'PUBLISHED',
+        });
+      }
+    }
+
     const newRide = {
       id: rideId,
-      driver_name: 'You (Driver ✓)',
+      driver_name: driverName,
       driver_rating: 5.0,
       vehicle: vehicleKind === 'BIKE' ? 'Bike' : 'Car',
       origin: fromLocation,
@@ -31,20 +51,6 @@ export async function POST(request: NextRequest) {
 
     // Add to active published rides store so it lists instantly across all search queries
     publishedRidesStore.unshift(newRide);
-
-    const supabase = await createClient();
-    if (supabase) {
-      const { data: userData } = await supabase.auth.getUser();
-      if (userData?.user) {
-        await supabase.from('rides').insert({
-          id: rideId,
-          driver_id: userData.user.id,
-          available_seats: Number(seatsAvailable) || 3,
-          departure_time: new Date(departureTime || Date.now()).toISOString(),
-          status: 'PUBLISHED',
-        });
-      }
-    }
 
     return NextResponse.json({
       success: true,

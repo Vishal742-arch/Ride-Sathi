@@ -1,6 +1,6 @@
 /**
  * Location Service for Ride With Me
- * Standardized module for GPS, Geocoding, Popular Locations, OSRM Road Distance,
+ * Standardized module for GPS, Geocoding, Popular Locations, Google Maps Platform,
  * Provider Abstraction, Fare Calculation, and Service Area Validation.
  */
 
@@ -12,6 +12,7 @@ export interface LocationPoint {
   city: 'Indore' | 'Dewas' | 'Ujjain' | string;
   area?: string;
   accuracy?: number; // in meters
+  placeId?: string;
 }
 
 export type GPSAccuracyLevel = 'Excellent' | 'Approximate' | 'Low' | 'Unavailable';
@@ -101,38 +102,101 @@ export const POPULAR_LOCATIONS: LocationPoint[] = [
   { placeName: 'Vikram University Campus', formattedAddress: 'Vikram University, Dewas Road, Ujjain, MP', city: 'Ujjain', area: 'University Area', latitude: 23.1650, longitude: 75.7980 },
 ];
 
+function getGoogleMapsApiKey(): string {
+  return (
+    process.env.GOOGLE_MAPS_API_KEY ||
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
+    process.env.MAPS_API_KEY ||
+    ''
+  );
+}
+
+function decodePolyline(encoded: string): [number, number][] {
+  const points: [number, number][] = [];
+  let index = 0, len = encoded.length;
+  let lat = 0, lng = 0;
+
+  while (index < len) {
+    let b, shift = 0, result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    let dlat = (result & 1) ? ~(result >> 1) : (result >> 1);
+    lat += dlat;
+
+    shift = 0;
+    result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    let dlng = (result & 1) ? ~(result >> 1) : (result >> 1);
+    lng += dlng;
+
+    points.push([lat / 1e5, lng / 1e5]);
+  }
+  return points;
+}
+
+function extractCityFromAddressComponents(components: any[]): string | null {
+  if (!components) return null;
+  for (const comp of components) {
+    if (comp.types.includes('locality') || comp.types.includes('administrative_area_level_2')) {
+      if (comp.long_name.toLowerCase().includes('indore')) return 'Indore';
+      if (comp.long_name.toLowerCase().includes('dewas')) return 'Dewas';
+      if (comp.long_name.toLowerCase().includes('ujjain')) return 'Ujjain';
+      return comp.long_name;
+    }
+  }
+  return null;
+}
+
+function detectCityFromText(text: string): 'Indore' | 'Dewas' | 'Ujjain' {
+  const t = text.toLowerCase();
+  if (t.includes('dewas')) return 'Dewas';
+  if (t.includes('ujjain')) return 'Ujjain';
+  return 'Indore';
+}
+
 /**
- * OpenStreetMap + OSRM Provider Implementation
+ * Google Maps Platform Provider Implementation
  */
-export const OpenStreetMapProvider: LocationProvider = {
-  name: 'OpenStreetMap + Leaflet + OSRM',
+export const GoogleMapsProvider: LocationProvider = {
+  name: 'Google Maps Platform (Places + Geocoding + Directions)',
   async reverseGeocode(latitude: number, longitude: number): Promise<LocationPoint> {
     const matchedPreset = findClosestPreset(latitude, longitude);
-    if (matchedPreset && matchedPreset.distanceKm < 0.8) {
+    if (matchedPreset && matchedPreset.distanceKm < 0.5) {
       return { ...matchedPreset.location, latitude, longitude };
     }
 
-    try {
-      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`;
-      const res = await fetch(url, { headers: { 'User-Agent': 'RideWithMe-App/1.0' } });
-      if (res.ok) {
-        const data = await res.json();
-        const addr = data.address || {};
-        const city = addr.city || addr.town || addr.village || addr.county || detectCityFromCoords(latitude, longitude);
-        const suburb = addr.suburb || addr.neighbourhood || addr.residential || addr.road || '';
-        const placeName = suburb ? `${suburb}, ${city}` : data.display_name.split(',')[0] || `${city} Area`;
+    const apiKey = getGoogleMapsApiKey();
+    if (apiKey) {
+      try {
+        const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${apiKey}`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === 'OK' && data.results && data.results.length > 0) {
+            const first = data.results[0];
+            const city = extractCityFromAddressComponents(first.address_components) || detectCityFromCoords(latitude, longitude);
+            const placeName = first.address_components[0]?.long_name || `Location near ${city}`;
 
-        return {
-          latitude,
-          longitude,
-          placeName,
-          formattedAddress: data.display_name || `${placeName}, ${city}`,
-          city,
-          area: suburb || city,
-        };
+            return {
+              latitude,
+              longitude,
+              placeName,
+              formattedAddress: first.formatted_address || `${placeName}, ${city}`,
+              city,
+              placeId: first.place_id,
+            };
+          }
+        }
+      } catch (err) {
+        console.warn('Google reverse geocoding network warning:', err);
       }
-    } catch {
-      // Fallback handled below
     }
 
     const city = detectCityFromCoords(latitude, longitude);
@@ -157,39 +221,41 @@ export const OpenStreetMapProvider: LocationProvider = {
         (loc.area && loc.area.toLowerCase().includes(q))
     );
 
-    if (presetMatches.length >= 4) return presetMatches;
+    const apiKey = getGoogleMapsApiKey();
+    if (apiKey) {
+      try {
+        const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(
+          query
+        )}&components=country:in&key=${apiKey}`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === 'OK' && data.predictions) {
+            const apiResults: LocationPoint[] = data.predictions.map((p: any) => {
+              const placeName = p.structured_formatting?.main_text || p.description.split(',')[0];
+              const city = detectCityFromText(p.description);
+              return {
+                latitude: 22.7196,
+                longitude: 75.8577,
+                placeName,
+                formattedAddress: p.description,
+                city,
+                placeId: p.place_id,
+              };
+            });
 
-    try {
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-        query + ' Madhya Pradesh India'
-      )}&limit=6&addressdetails=1`;
-      const res = await fetch(url, { headers: { 'User-Agent': 'RideWithMe-App/1.0' } });
-      if (res.ok) {
-        const items = await res.json();
-        const apiResults: LocationPoint[] = items.map((item: any) => {
-          const addr = item.address || {};
-          const city = addr.city || addr.town || addr.village || detectCityFromCoords(parseFloat(item.lat), parseFloat(item.lon));
-          const placeName = item.display_name.split(',')[0];
-          return {
-            latitude: parseFloat(item.lat),
-            longitude: parseFloat(item.lon),
-            placeName,
-            formattedAddress: item.display_name,
-            city,
-            area: addr.suburb || addr.neighbourhood || city,
-          };
-        });
-
-        const combined = [...presetMatches];
-        for (const item of apiResults) {
-          if (!combined.some(c => c.placeName.toLowerCase() === item.placeName.toLowerCase())) {
-            combined.push(item);
+            const combined = [...presetMatches];
+            for (const item of apiResults) {
+              if (!combined.some(c => c.placeName.toLowerCase() === item.placeName.toLowerCase())) {
+                combined.push(item);
+              }
+            }
+            return combined.slice(0, 10);
           }
         }
-        return combined.slice(0, 10);
+      } catch (err) {
+        console.warn('Google Places autocomplete search warning:', err);
       }
-    } catch {
-      // Return matching presets if network fails
     }
 
     return presetMatches;
@@ -199,35 +265,37 @@ export const OpenStreetMapProvider: LocationProvider = {
     const isIntercity = origin.city.toLowerCase() !== destination.city.toLowerCase();
     const serviceAreaValid = validateServiceArea(origin, destination);
 
-    try {
-      const url = `https://router.project-osrm.org/route/v1/driving/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?overview=full&geometries=geojson`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.routes && data.routes.length > 0) {
-          const route = data.routes[0];
-          const distanceKm = Math.max(0.5, Math.round((route.distance / 1000) * 10) / 10);
-          const durationMins = Math.max(2, Math.round(route.duration / 60));
-          const polylineCoords: [number, number][] = route.geometry.coordinates.map(
-            (c: [number, number]) => [c[1], c[0]]
-          );
+    const apiKey = getGoogleMapsApiKey();
+    if (apiKey) {
+      try {
+        const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&key=${apiKey}`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === 'OK' && data.routes && data.routes.length > 0) {
+            const route = data.routes[0];
+            const leg = route.legs[0];
+            const distanceKm = Math.max(0.5, Math.round((leg.distance.value / 1000) * 10) / 10);
+            const durationMins = Math.max(2, Math.round(leg.duration.value / 60));
+            const polylineCoords = decodePolyline(route.overview_polyline.points);
 
-          return {
-            distanceKm,
-            durationMins,
-            formattedDistance: distanceKm < 1 ? `${Math.round(distanceKm * 1000)} m` : `${distanceKm} km`,
-            formattedDuration: durationMins >= 60 ? `${Math.floor(durationMins / 60)}h ${durationMins % 60}m` : `${durationMins} min`,
-            polylineCoords,
-            origin,
-            destination,
-            isIntercity,
-            serviceAreaValid,
-            isApproximateFallback: false,
-          };
+            return {
+              distanceKm,
+              durationMins,
+              formattedDistance: leg.distance.text || `${distanceKm} km`,
+              formattedDuration: leg.duration.text || `${durationMins} min`,
+              polylineCoords,
+              origin,
+              destination,
+              isIntercity,
+              serviceAreaValid,
+              isApproximateFallback: false,
+            };
+          }
         }
+      } catch (err: any) {
+        console.warn('Google Directions API routing warning:', err?.message || err);
       }
-    } catch (err: any) {
-      console.warn('OSRM routing network error:', err?.message || err);
     }
 
     // Explicit Fallback labeled as Approximate
@@ -249,7 +317,7 @@ export const OpenStreetMapProvider: LocationProvider = {
       isIntercity,
       serviceAreaValid,
       isApproximateFallback: true,
-      routingError: 'Unable to calculate precise road route right now. Displaying approximate distance.',
+      routingError: 'Unable to calculate precise Google road route right now. Displaying approximate distance.',
     };
   },
 };
@@ -258,11 +326,7 @@ export const OpenStreetMapProvider: LocationProvider = {
  * Provider Manager configured via LOCATION_PROVIDER env var
  */
 export function getActiveLocationProvider(): LocationProvider {
-  const providerType = process.env.LOCATION_PROVIDER || 'osm';
-  if (providerType === 'osm') {
-    return OpenStreetMapProvider;
-  }
-  return OpenStreetMapProvider;
+  return GoogleMapsProvider;
 }
 
 export function getAccuracyLevel(accuracyInMeters?: number | null): GPSAccuracyLevel {
@@ -411,4 +475,3 @@ function findClosestPreset(lat: number, lng: number) {
   }
   return closest ? { location: closest, distanceKm: minDistance } : null;
 }
-

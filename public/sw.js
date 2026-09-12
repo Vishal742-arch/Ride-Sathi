@@ -1,7 +1,7 @@
-// Ride Sathi — Service Worker
+// Ride With Me — Service Worker
 // Caches static assets for a fast, offline-capable app-like experience.
 
-const CACHE_NAME = 'ride-sathi-v1';
+const CACHE_NAME = 'ride-with-me-v1';
 
 // Static assets to pre-cache on install
 const PRECACHE_URLS = [

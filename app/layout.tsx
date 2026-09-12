@@ -2,5 +2,25 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { Header } from '@/components/header';
 import { Footer } from '@/components/footer';
-export const metadata: Metadata = { title: { default: 'Ride Sathi — Share the journey', template: '%s | Ride Sathi' }, description: 'Affordable verified shared rides across Indore, Dewas and nearby cities.', icons: { icon: '/favicon.svg' }, manifest: '/manifest.json', appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Ride Sathi' }, openGraph: { type: 'website', siteName: 'Ride Sathi', title: 'Ride Sathi — Share the journey', description: 'Affordable verified shared rides across Indore, Dewas and nearby cities.' } };
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) { return <html lang="en"><head><meta name="theme-color" content="#087c64" /><meta name="mobile-web-app-capable" content="yes" /><meta name="apple-mobile-web-app-capable" content="yes" /><meta name="apple-mobile-web-app-status-bar-style" content="default" /><meta name="apple-mobile-web-app-title" content="Ride Sathi" /><link rel="apple-touch-icon" href="/logo.png" /></head><body><Header />{children}<Footer /><script dangerouslySetInnerHTML={{ __html: `if ('serviceWorker' in navigator) { window.addEventListener('load', function() { navigator.serviceWorker.register('/sw.js').catch(function(e) { console.warn('SW registration failed:', e); }); }); }` }} /></body></html>; }
+export const metadata: Metadata = {
+  title: { default: 'Ride With Me — Shared Rides & Carpooling', template: '%s | Ride With Me' },
+  description: 'Affordable, verified shared rides and carpooling across Indore, Dewas, Ujjain and surrounding regions.',
+  icons: { icon: '/favicon.svg' },
+  manifest: '/manifest.json',
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://ridewithme.app'),
+  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Ride With Me' },
+  openGraph: {
+    type: 'website',
+    siteName: 'Ride With Me',
+    title: 'Ride With Me — Shared Rides & Carpooling',
+    description: 'Affordable, verified shared rides and carpooling across Indore, Dewas, Ujjain and surrounding regions.',
+    images: [{ url: '/icon.jpg', width: 1200, height: 630, alt: 'Ride With Me Carpooling' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Ride With Me — Shared Rides & Carpooling',
+    description: 'Affordable, verified shared rides and carpooling across Indore, Dewas, Ujjain and surrounding regions.',
+    images: ['/icon.jpg'],
+  },
+};
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) { return <html lang="en"><head><meta name="theme-color" content="#087c64" /><meta name="mobile-web-app-capable" content="yes" /><meta name="apple-mobile-web-app-capable" content="yes" /><meta name="apple-mobile-web-app-status-bar-style" content="default" /><meta name="apple-mobile-web-app-title" content="Ride With Me" /><link rel="apple-touch-icon" href="/icon.jpg" /></head><body><Header />{children}<Footer /><script dangerouslySetInnerHTML={{ __html: `if ('serviceWorker' in navigator) { window.addEventListener('load', function() { navigator.serviceWorker.register('/sw.js').catch(function(e) { console.warn('SW registration failed:', e); }); }); }` }} /></body></html>; }

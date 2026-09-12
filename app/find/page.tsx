@@ -250,8 +250,8 @@ function FindRideContent() {
       {activeChatRideId && (
         <RideChat
           rideId={activeChatRideId}
-          driverName="Rahul Sharma"
-          driverRole="Verified Driver"
+          driverName={rides.find(r => r.id === activeChatRideId)?.driver_name || 'Verified Driver'}
+          driverRole="Verified Commuter"
           isVerified={true}
           onClose={() => setActiveChatRideId(null)}
         />
