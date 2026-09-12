@@ -26,7 +26,7 @@ export default function Home() {
             </div>
             <div className="trust-row">
               <span><BadgeCheck size={18} /> Verified profiles</span>
-              <span><WalletCards size={18} /> Secure payments</span>
+              <span><WalletCards size={18} /> Clear fare display</span>
             </div>
           </div>
 
@@ -99,7 +99,7 @@ export default function Home() {
           <ul>
             <li><BadgeCheck /> Phone and identity verification</li>
             <li><BadgeCheck /> Driver and vehicle review</li>
-            <li><BadgeCheck /> Protected payment flow</li>
+            <li><BadgeCheck /> Clear fare transparency</li>
           </ul>
           <Link href="/about" className="text-link">How safety works <ArrowRight size={16} /></Link>
         </div>

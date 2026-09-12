@@ -1,5 +1,5 @@
 'use client';
-import { CheckCircle2, CreditCard, ExternalLink, KeyRound, QrCode, ShieldCheck, Sparkles, X } from 'lucide-react';
+import { CheckCircle2, KeyRound, Sparkles, X, Banknote, Route } from 'lucide-react';
 import { useState } from 'react';
 
 interface RideBookingModalProps {
@@ -16,16 +16,12 @@ interface RideBookingModalProps {
 
 export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
   const [seats, setSeats] = useState(1);
-  const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'CARD'>('UPI');
   const [passengerName, setPassengerName] = useState('');
   const [loading, setLoading] = useState(false);
   const [bookingResult, setBookingResult] = useState<{
     bookingId: string;
     tripPin: string;
     fareAmount: number;
-    checkoutUrl?: string;
-    isMockPayment?: boolean;
-    paymentId?: string;
   } | null>(null);
   const [error, setError] = useState('');
 
@@ -41,26 +37,23 @@ export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
         body: JSON.stringify({
           rideId: ride.id,
           seats,
-          paymentMethod,
           passengerName: passengerName.trim() || undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Failed to initialize payment. Please try again.');
+        setError(data.error || 'Failed to confirm booking. Please try again.');
         setLoading(false);
         return;
       }
-      
-      if (data.success && data.checkoutUrl) {
-        // Redirect directly to official Dodo Payments checkout gateway (UPI/Card)
-        window.location.href = data.checkoutUrl;
-      } else {
-        setError(data.error || 'Payment link could not be generated.');
-        setLoading(false);
-      }
+      setBookingResult({
+        bookingId: data.bookingId,
+        tripPin: data.tripPin,
+        fareAmount: data.fareAmount,
+      });
     } catch {
       setError('Network error. Please check your connection and try again.');
+    } finally {
       setLoading(false);
     }
   };
@@ -108,7 +101,7 @@ export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
                   <strong style={{ fontSize: 13, color: '#173e34' }}>{ride.departure_time}</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 12, color: '#617d72', fontWeight: 600 }}>PRICE / SEAT</span>
+                  <span style={{ fontSize: 12, color: '#617d72', fontWeight: 600 }}>FARE / SEAT</span>
                   <strong style={{ fontSize: 14, color: '#087c64', fontWeight: 800 }}>₹{ride.price_per_seat}</strong>
                 </div>
               </div>
@@ -157,49 +150,12 @@ export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
                 </div>
               </div>
 
-              {/* Payment Method */}
-              <div>
-                <label style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#617d72', display: 'block', marginBottom: 8 }}>
-                  PAYMENT METHOD
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('UPI')}
-                    style={{
-                      padding: 12,
-                      borderRadius: 12,
-                      border: paymentMethod === 'UPI' ? '2px solid #087c64' : '1px solid #dcece2',
-                      background: paymentMethod === 'UPI' ? '#e6f7ef' : '#fff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      fontWeight: 700,
-                      color: paymentMethod === 'UPI' ? '#087c64' : '#3c6155',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <QrCode size={18} /> Instant UPI / GPay
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('CARD')}
-                    style={{
-                      padding: 12,
-                      borderRadius: 12,
-                      border: paymentMethod === 'CARD' ? '2px solid #087c64' : '1px solid #dcece2',
-                      background: paymentMethod === 'CARD' ? '#e6f7ef' : '#fff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      fontWeight: 700,
-                      color: paymentMethod === 'CARD' ? '#087c64' : '#3c6155',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <CreditCard size={18} /> Card / Netbanking
-                  </button>
-                </div>
+              {/* Direct Payment Notice */}
+              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '12px 14px', display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#166534' }}>
+                <Banknote size={18} style={{ flexShrink: 0, marginTop: 1, color: '#087c64' }} />
+                <span>
+                  <strong>Pay the driver directly</strong> at the end of your ride according to the calculated fare. Ride Sathi shows you the exact fare — no online payment required.
+                </span>
               </div>
 
               {error && (
@@ -207,10 +163,6 @@ export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
                   ⚠️ {error}
                 </div>
               )}
-
-              <div style={{ background: '#edf7f2', padding: 12, borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#164d3f' }}>
-                <ShieldCheck size={16} /> Contact privacy & SOS protection included automatically. Powered by Dodo Payments.
-              </div>
             </div>
 
             <div className="privacy-modal-footer" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
@@ -223,7 +175,7 @@ export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
                 onClick={handleConfirmBooking}
                 disabled={loading}
               >
-                {loading ? 'Processing…' : `Pay ₹${totalFare} & Confirm`}
+                {loading ? 'Confirming…' : `Confirm Booking`}
               </button>
             </div>
           </>
@@ -235,7 +187,7 @@ export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
               </div>
               <div>
                 <h3>Booking Confirmed!</h3>
-                <p>Your Trip PIN has been generated</p>
+                <p>Meet your driver at the pickup point</p>
               </div>
             </div>
 
@@ -253,41 +205,42 @@ export function RideBookingModal({ ride, onClose }: RideBookingModalProps) {
                 </p>
               </div>
 
-              {/* Payment details */}
+              {/* Booking details */}
               <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 12, padding: '12px 16px', margin: '12px 0', textAlign: 'left' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                   <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>BOOKING ID</span>
                   <span style={{ fontSize: 12, color: '#374151', fontFamily: 'monospace' }}>{bookingResult.bookingId.slice(0, 20)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>FARE PAID</span>
-                  <span style={{ fontSize: 12, color: '#087c64', fontWeight: 700 }}>₹{bookingResult.fareAmount}</span>
+                  <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>ROUTE</span>
+                  <span style={{ fontSize: 12, color: '#374151' }}>{ride.origin} ➔ {ride.destination}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>DRIVER</span>
+                  <span style={{ fontSize: 12, color: '#374151' }}>{ride.driver_name}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>DEPARTURE</span>
+                  <span style={{ fontSize: 12, color: '#374151' }}>{ride.departure_time}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>PAYMENT</span>
-                  <span style={{ fontSize: 12, color: '#374151' }}>
-                    {bookingResult.isMockPayment ? '🔵 Dev/Preview Mode' : '✅ Dodo Payments Live'}
-                  </span>
+                  <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>FARE TO PAY DRIVER</span>
+                  <span style={{ fontSize: 14, color: '#087c64', fontWeight: 800 }}>₹{bookingResult.fareAmount}</span>
                 </div>
               </div>
 
-              {/* Complete payment link if Dodo returned one */}
-              {bookingResult.checkoutUrl && (
-                <a
-                  href={bookingResult.checkoutUrl}
-                  target="_self"
-                  className="ride-btn ride-btn-dark"
-                  style={{ width: '100%', display: 'inline-flex', justifyContent: 'center', marginTop: 12, padding: '14px', fontSize: 15, background: '#087c64', color: '#fff', fontWeight: 700 }}
-                >
-                  <ExternalLink size={18} style={{ marginRight: 8 }} />
-                  Proceed to Dodo Payment Gateway (UPI / Card)
-                </a>
-              )}
+              {/* Pay driver directly reminder */}
+              <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '12px 14px', display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, color: '#92400e', textAlign: 'left' }}>
+                <Route size={16} style={{ flexShrink: 0, marginTop: 2, color: '#b45309' }} />
+                <span>
+                  After the ride, <strong>pay ₹{bookingResult.fareAmount} directly to {ride.driver_name}.</strong> Ride Sathi calculates the fare — payment is handled between you and the driver.
+                </span>
+              </div>
             </div>
 
             <div className="privacy-modal-footer">
               <button className="ride-btn ride-btn-primary" onClick={onClose} style={{ width: '100%' }}>
-                Done & View Active Ride
+                Done — View Active Ride
               </button>
             </div>
           </>

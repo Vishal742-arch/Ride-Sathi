@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { createDodoCheckoutSession } from '@/lib/dodo';
 import { calculateRoadRoute, calculateFare, LocationPoint } from '@/lib/location-service';
 
 export async function POST(request: NextRequest) {
@@ -8,10 +7,8 @@ export async function POST(request: NextRequest) {
     const {
       rideId,
       seats = 1,
-      paymentMethod = 'UPI',
       passengerName,
       passengerEmail,
-      passengerPhone,
       pickupCoords,
       dropCoords,
       vehicleType = 'CAR',
@@ -67,26 +64,14 @@ export async function POST(request: NextRequest) {
           ride_id: rideId,
           passenger_id: authenticatedUserId,
           seats: Number(seats),
-          status: 'PENDING_PAYMENT',
+          status: 'CONFIRMED',
           booking_final_fare: fareAmount,
         });
       }
     }
 
-    // Create Dodo Payments checkout session (server-side only)
-    const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/find?booking=${bookingId}`;
-
-    const dodoSession = await createDodoCheckoutSession({
-      amountInINR: fareAmount,
-      rideId,
-      passengerEmail: userEmail,
-      passengerName: passengerName || 'Ride Sathi Commuter',
-      returnUrl,
-    });
-
-    if (!dodoSession.checkoutUrl) {
-      return NextResponse.json({ error: 'Failed to create payment checkout session with provider.' }, { status: 500 });
-    }
+    // Log booking (server-side only — no payment gateway involved)
+    console.log(`[Book API] Booking confirmed: ${bookingId}, fare: ₹${fareAmount}, passenger: ${passengerName || userEmail || 'Anonymous'}`);
 
     return NextResponse.json({
       success: true,
@@ -94,10 +79,6 @@ export async function POST(request: NextRequest) {
       rideId,
       tripPin,
       fareAmount,
-      paymentMethod,
-      checkoutUrl: dodoSession.checkoutUrl,
-      paymentId: dodoSession.paymentId,
-      isMockPayment: dodoSession.isMock,
     });
   } catch (err: any) {
     console.error('[Book API] Error:', err?.message || err);

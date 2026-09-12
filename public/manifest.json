@@ -1,0 +1,42 @@
+{
+  "name": "Ride Sathi",
+  "short_name": "Ride Sathi",
+  "description": "Affordable verified shared rides across Indore, Dewas and nearby cities.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#087c64",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["travel", "utilities"],
+  "lang": "en-IN",
+  "shortcuts": [
+    {
+      "name": "Find a Ride",
+      "short_name": "Find",
+      "description": "Search for available rides",
+      "url": "/find",
+      "icons": [{ "src": "/favicon.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Offer a Ride",
+      "short_name": "Offer",
+      "description": "Post your ride and find passengers",
+      "url": "/offer",
+      "icons": [{ "src": "/favicon.png", "sizes": "192x192" }]
+    }
+  ]
+}

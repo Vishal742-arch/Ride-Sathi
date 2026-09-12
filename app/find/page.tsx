@@ -131,7 +131,7 @@ function FindRideContent() {
       <section className="shell finder">
         <span className="kicker">RIDE SATHI CARPOOLING</span>
         <h1>Find a ride</h1>
-        <p>Choose your pickup and destination. Search across Indore, Dewas, and Ujjain location network with instant UPI/Card booking & contact privacy.</p>
+        <p>Choose your pickup and destination. Search across Indore, Dewas, and Ujjain location network. Pay the driver directly after your ride.</p>
 
         <form onSubmit={handleSearch} className="find-card" style={{ gap: 20 }}>
           {/* Dual Location & Interactive Route Map Component */}
@@ -228,7 +228,7 @@ function FindRideContent() {
                 </div>
                 <div className="ride-actions">
                   <button className="ride-btn ride-btn-primary" onClick={() => setBookingRide(ride)}>
-                    ⚡ Book & Pay (UPI/Card)
+                    ⚡ Book Ride
                   </button>
                   <button className="ride-btn ride-btn-light" onClick={() => setActiveChatRideId(ride.id)}>
                     <MessageSquare size={16}/> In-App Chat
