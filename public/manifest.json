@@ -9,13 +9,13 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/favicon.png",
+      "src": "/app-icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/logo.png",
+      "src": "/app-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
@@ -29,14 +29,14 @@
       "short_name": "Find",
       "description": "Search for available rides",
       "url": "/find",
-      "icons": [{ "src": "/favicon.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/app-icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Offer a Ride",
       "short_name": "Offer",
       "description": "Post your ride and find passengers",
       "url": "/offer",
-      "icons": [{ "src": "/favicon.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/app-icon-192.png", "sizes": "192x192" }]
     }
   ]
 }
