@@ -1,2 +1,93 @@
-'use client'; import Link from 'next/link'; import { useState } from 'react'; import { createClient } from '@supabase/supabase-js';
-export default function Login(){const [message,setMessage]=useState('');async function submit(f:FormData){const url=process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://kxjyewhhdyeylfagwieb.supabase.co',key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_qekJJhIYjEh52w5IfnGCqw_LRraeFBG';if(!url||!key){setMessage('Supabase environment variables are missing. Please configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.');return}const s=createClient(url,key);const {error}=await s.auth.signInWithPassword({email:String(f.get('email')),password:String(f.get('password'))});setMessage(error?error.message:'Signed in. Redirecting…');if(!error)location.href='/dashboard'}return <main className="finder-page"><div className="shell finder"><form action={submit} className="find-card"><p className="kicker">WELCOME BACK</p><h1>Log in to Ride With Me</h1><label><span>EMAIL</span><div className="find-input"><input required name="email" type="email"/></div></label><label className="block mt-4"><span>PASSWORD</span><div className="find-input"><input required name="password" type="password"/></div></label><button className="search-button">Log in</button>{message&&<p className="form-note">{message}</p>}<div className="mt-6 flex justify-between text-sm"><Link href="/forgot-password">Forgot password?</Link><Link href="/signup">Create account</Link></div></form></div></main>}
+'use client';
+
+import Link from 'next/link';
+import { useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
+
+export default function Login() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setMessage('');
+
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (error) {
+        setMessage(error.message);
+        setLoading(false);
+        return;
+      }
+
+      if (data?.session) {
+        setMessage('Signed in successfully! Redirecting...');
+        window.location.href = '/dashboard';
+      } else {
+        setMessage('Signed in, but session was not returned. Please check email confirmation status.');
+        setLoading(false);
+      }
+    } catch (err: any) {
+      setMessage(err.message || 'An unexpected error occurred.');
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="finder-page">
+      <div className="shell finder">
+        <form onSubmit={handleSubmit} className="find-card">
+          <p className="kicker">WELCOME BACK</p>
+          <h1>Log in to Ride With Me</h1>
+          
+          <label>
+            <span>EMAIL</span>
+            <div className="find-input">
+              <input
+                required
+                name="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@example.com"
+              />
+            </div>
+          </label>
+          
+          <label className="block mt-4">
+            <span>PASSWORD</span>
+            <div className="find-input">
+              <input
+                required
+                name="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+              />
+            </div>
+          </label>
+          
+          <button type="submit" disabled={loading} className="search-button mt-6">
+            {loading ? 'Logging in...' : 'Log in'}
+          </button>
+          
+          {message && <p className="form-note mt-4">{message}</p>}
+          
+          <div className="mt-6 flex justify-between text-sm">
+            <Link href="/forgot-password">Forgot password?</Link>
+            <Link href="/signup">Create account</Link>
+          </div>
+        </form>
+      </div>
+    </main>
+  );
+}
