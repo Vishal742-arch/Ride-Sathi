@@ -3,6 +3,7 @@ import { AlertTriangle, Check, CheckCheck, MessageSquare, Phone, Send, ShieldAle
 import { useEffect, useState } from 'react';
 import { ChatMessage } from '@/lib/chat';
 import { PrivacyCallModal } from './privacy-call-modal';
+import { trackEvent } from '@/lib/analytics';
 
 interface RideChatProps {
   rideId: string;
@@ -26,6 +27,7 @@ export function RideChat({
   const [reportSuccess, setReportSuccess] = useState(false);
 
   useEffect(() => {
+    trackEvent('communication_started');
     fetchMessages();
     const timer = setInterval(fetchMessages, 5000);
     return () => clearInterval(timer);

@@ -63,31 +63,32 @@ export function RouteLocationPicker({
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  // Search debounce for pickup
+  // Search debounce for pickup (minimum 2 chars)
   useEffect(() => {
-    if (!pickupQuery.trim() || !pickupOpen) {
+    if (!pickupQuery.trim() || pickupQuery.trim().length < 2 || !pickupOpen) {
       setPickupResults([]);
       return;
     }
     const timer = setTimeout(async () => {
-      const res = await searchLocations(pickupQuery);
+      const res = await searchLocations(pickupQuery, pickup ? { lat: pickup.latitude, lng: pickup.longitude } : undefined);
       setPickupResults(res);
-    }, 200);
+    }, 250);
     return () => clearTimeout(timer);
-  }, [pickupQuery, pickupOpen]);
+  }, [pickupQuery, pickupOpen, pickup]);
 
-  // Search debounce for drop
+  // Search debounce for drop (minimum 2 chars)
   useEffect(() => {
-    if (!dropQuery.trim() || !dropOpen) {
+    if (!dropQuery.trim() || dropQuery.trim().length < 2 || !dropOpen) {
       setDropResults([]);
       return;
     }
     const timer = setTimeout(async () => {
-      const res = await searchLocations(dropQuery);
+      const context = pickup ? { lat: pickup.latitude, lng: pickup.longitude } : undefined;
+      const res = await searchLocations(dropQuery, context);
       setDropResults(res);
-    }, 200);
+    }, 250);
     return () => clearTimeout(timer);
-  }, [dropQuery, dropOpen]);
+  }, [dropQuery, dropOpen, pickup]);
 
   const handleDetectGPS = async () => {
     setGpsState({ loading: true, result: null });
@@ -106,6 +107,15 @@ export function RouteLocationPicker({
   const handleDropMarkerDrag = async (lat: number, lng: number) => {
     const updated = await reverseGeocode(lat, lng);
     onDropChange(updated);
+  };
+
+  const handleMapDirectClick = async (lat: number, lng: number) => {
+    const updated = await reverseGeocode(lat, lng);
+    if (mapMode === 'drop' || (pickup && !drop)) {
+      onDropChange(updated);
+    } else {
+      onPickupChange(updated);
+    }
   };
 
   const popularByCity = POPULAR_LOCATIONS.filter(
@@ -188,24 +198,27 @@ export function RouteLocationPicker({
             }}
           >
             <Navigation size={14} className={gpsState.loading ? 'animate-spin' : ''} />
-            {gpsState.loading ? 'Finding...' : '📍 My Location'}
+            {gpsState.loading ? 'Detecting...' : '📍 My Location'}
           </button>
         </div>
 
-        {/* GPS accuracy badge */}
+        {/* GPS accuracy badge (4-Tier Accuracy) */}
         {gpsState.result && !gpsState.result.error && (
           <div style={{ marginTop: 5, fontSize: 11 }}>
             <span style={{
               color: gpsState.result.accuracyLevel === 'Excellent' ? '#15803d'
+                : gpsState.result.accuracyLevel === 'Good' ? '#047857'
                 : gpsState.result.accuracyLevel === 'Approximate' ? '#b45309' : '#b91c1c',
               fontWeight: 700,
               background: gpsState.result.accuracyLevel === 'Excellent' ? '#f0fdf4'
+                : gpsState.result.accuracyLevel === 'Good' ? '#ecfdf5'
                 : gpsState.result.accuracyLevel === 'Approximate' ? '#fffbeb' : '#fef2f2',
-              padding: '2px 8px', borderRadius: 8,
+              padding: '3px 10px', borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 4
             }}>
-              {gpsState.result.accuracyLevel === 'Excellent' && `✓ GPS Excellent (~${gpsState.result.accuracy}m)`}
-              {gpsState.result.accuracyLevel === 'Approximate' && `⚡ GPS Approximate (~${gpsState.result.accuracy}m) — fine-tune pin on map`}
-              {gpsState.result.accuracyLevel === 'Low' && `⚠️ GPS low accuracy — drag pin on map to correct`}
+              {gpsState.result.accuracyLevel === 'Excellent' && `🎯 GPS Excellent (≤30m radius)`}
+              {gpsState.result.accuracyLevel === 'Good' && `✓ GPS Good (${gpsState.result.accuracy}m radius)`}
+              {gpsState.result.accuracyLevel === 'Approximate' && `⚡ GPS Approximate (~${gpsState.result.accuracy}m) — adjust pin on map if needed`}
+              {gpsState.result.accuracyLevel === 'Low' && `⚠️ Low Accuracy (>100m) — drag or tap pin to set exact location`}
             </span>
           </div>
         )}
@@ -216,7 +229,7 @@ export function RouteLocationPicker({
         )}
 
         {/* Pickup Autocomplete Dropdown */}
-        {pickupOpen && pickupQuery && (
+        {pickupOpen && pickupQuery && pickupQuery.trim().length >= 2 && (
           <div style={{
             position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
             background: '#fff', borderRadius: 14, marginTop: 4,
@@ -225,7 +238,7 @@ export function RouteLocationPicker({
           }}>
             {pickupResults.length === 0 ? (
               <div style={{ padding: '12px 16px', fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>
-                Searching...
+                Searching places in MP...
               </div>
             ) : pickupResults.map((loc, idx) => (
               <button
@@ -316,7 +329,7 @@ export function RouteLocationPicker({
         </div>
 
         {/* Drop Autocomplete Dropdown */}
-        {dropOpen && dropQuery && (
+        {dropOpen && dropQuery && dropQuery.trim().length >= 2 && (
           <div style={{
             position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
             background: '#fff', borderRadius: 14, marginTop: 4,
@@ -325,7 +338,7 @@ export function RouteLocationPicker({
           }}>
             {dropResults.length === 0 ? (
               <div style={{ padding: '12px 16px', fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>
-                Searching...
+                Searching places in MP...
               </div>
             ) : dropResults.map((loc, idx) => (
               <button
@@ -398,7 +411,7 @@ export function RouteLocationPicker({
               ))}
             </div>
 
-            {/* Location chips — larger, grid layout for easy tapping */}
+            {/* Location chips */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
               {popularByCity.map((loc, i) => (
                 <button
@@ -475,7 +488,7 @@ export function RouteLocationPicker({
                   fontWeight: 700, cursor: 'pointer',
                 }}
               >
-                📍 Adjust Pickup Pin
+                📍 Tap/Drag Pickup Pin
               </button>
               <button
                 type="button"
@@ -488,7 +501,7 @@ export function RouteLocationPicker({
                   fontWeight: 700, cursor: 'pointer',
                 }}
               >
-                🏁 Adjust Drop Pin
+                🏁 Tap/Drag Drop Pin
               </button>
             </div>
           )}
@@ -507,8 +520,8 @@ export function RouteLocationPicker({
                 display: 'flex', alignItems: 'center', gap: 6,
               }}>
                 {mapMode === 'pickup'
-                  ? '📍 Drag the green pin to fine-tune your pickup location'
-                  : '🏁 Drag the red pin to fine-tune your drop location'}
+                  ? '📍 Click anywhere on the map or drag the green pin to set precise pickup location'
+                  : '🏁 Click anywhere on the map or drag the red pin to set precise drop location'}
                 <button
                   type="button"
                   onClick={() => setMapMode('view')}
@@ -524,6 +537,7 @@ export function RouteLocationPicker({
               polylineCoords={polylineCoords}
               onPickupDragEnd={handlePickupMarkerDrag}
               onDropDragEnd={handleDropMarkerDrag}
+              onMapClick={handleMapDirectClick}
               interactiveMode={mapMode}
               height={280}
             />
@@ -534,3 +548,4 @@ export function RouteLocationPicker({
     </div>
   );
 }
+

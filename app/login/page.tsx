@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { trackEvent } from '@/lib/analytics';
+import { PageViewTracker } from '@/components/analytics-tracker';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -14,6 +16,7 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     setMessage('');
+    trackEvent('login_started');
 
     try {
       const supabase = createClient();
@@ -29,6 +32,7 @@ export default function Login() {
       }
 
       if (data?.session) {
+        trackEvent('login_completed');
         setMessage('Signed in successfully! Redirecting...');
         window.location.href = '/dashboard';
       } else {

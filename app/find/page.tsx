@@ -1,10 +1,11 @@
 'use client';
 import { CalendarDays, Car, ChevronDown, Clock, MapPin, MessageSquare, Navigation, Phone, Search, ShieldCheck, Users, X, Info, Route, AlertCircle } from 'lucide-react';
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { RideChat } from '@/components/ride-chat';
 import { RideBookingModal } from '@/components/ride-booking-modal';
 import { RouteLocationPicker } from '@/components/route-location-picker';
+import { PassengerSelector } from '@/components/passenger-selector';
 import { LocationPoint, RouteInfo, FareCalculation, calculateRoadRoute, calculateFare, resolveLocationString } from '@/lib/location-service';
 import { formatPostedTime } from '@/lib/utils/format-posted-time';
 
@@ -23,8 +24,13 @@ type RideItem = {
   created_at?: string;
 };
 
+import { trackEvent } from '@/lib/analytics';
+import { PageViewTracker } from '@/components/analytics-tracker';
+
 function FindRideContent() {
   const searchParams = useSearchParams();
+  const dateInputRef = useRef<HTMLInputElement>(null);
+  const [passengersCount, setPassengersCount] = useState(1);
   const [vehicle, setVehicle] = useState<'BIKE' | 'CAR'>('CAR');
   const [message, setMessage] = useState('');
   const [pickup, setPickup] = useState<LocationPoint | null>(null);
@@ -41,7 +47,7 @@ function FindRideContent() {
   const [rides, setRides] = useState<RideItem[]>([]);
   const [, setNow] = useState(Date.now());
 
-  // Handle incoming query params (from, to, date)
+  // Handle incoming query params (from, to, date) — runs once on mount
   useEffect(() => {
     const fromParam = searchParams.get('from');
     const toParam = searchParams.get('to');
@@ -64,9 +70,14 @@ function FindRideContent() {
         if (dPoint) setDrop(dPoint);
       }
 
-      fetchRides(fromParam || '', toParam || '');
-      if (fromParam && toParam) {
-        setMessage(`Showing matches from ${fromParam} to ${toParam}.`);
+      // Only filter by params if they exist; otherwise load all available rides
+      if (fromParam || toParam) {
+        fetchRides(fromParam || '', toParam || '');
+        if (fromParam && toParam) {
+          setMessage(`Showing matches from ${fromParam} to ${toParam}.`);
+        }
+      } else {
+        fetchRides();
       }
     }
 
@@ -78,7 +89,8 @@ function FindRideContent() {
     }, 60000);
 
     return () => clearInterval(interval);
-  }, [searchParams]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Recalculate route & fare whenever pickup, drop or vehicle type changes
   useEffect(() => {
@@ -110,7 +122,13 @@ function FindRideContent() {
       const url = `/api/rides/search?from=${encodeURIComponent(fromQuery || '')}&to=${encodeURIComponent(toQuery || '')}`;
       const res = await fetch(url);
       const data = await res.json();
-      if (data.rides) setRides(data.rides);
+      const results = data.rides || [];
+      if (data.rides) setRides(results);
+      trackEvent('ride_search_completed', {
+        origin_city: fromQuery,
+        destination_city: toQuery,
+        search_result_count: results.length,
+      });
     } catch {
       // Fallback handled by API
     }
@@ -122,7 +140,13 @@ function FindRideContent() {
       setMessage('Please select both a pickup location and destination.');
       return;
     }
-    setMessage(`Showing matches from ${pickup.placeName} to ${drop.placeName}.`);
+    trackEvent('ride_search_started', {
+      origin_city: pickup.city || pickup.placeName,
+      destination_city: drop.city || drop.placeName,
+      vehicle_type: vehicle.toLowerCase(),
+      passengers: passengersCount,
+    });
+    setMessage(`Showing matches from ${pickup.placeName} to ${drop.placeName} for ${passengersCount} passenger${passengersCount > 1 ? 's' : ''}.`);
     fetchRides(pickup.placeName, drop.placeName);
   };
 
@@ -187,8 +211,28 @@ function FindRideContent() {
           )}
 
           <div className="find-options">
-            <label><span>DATE</span><div className="find-input"><CalendarDays/><input type="date" aria-label="Travel date" value={travelDate} onChange={e => setTravelDate(e.target.value)} /></div></label>
-            <label><span>PASSENGERS</span><div className="find-input"><Users/><select aria-label="Passengers" defaultValue="1"><option>1</option><option>2</option><option>3</option></select><ChevronDown size={15}/></div></label>
+            <label>
+              <span>DATE</span>
+              <div
+                className="find-input cursor-pointer"
+                onMouseEnter={() => { try { dateInputRef.current?.showPicker?.(); } catch {} }}
+                onFocus={() => { try { dateInputRef.current?.showPicker?.(); } catch {} }}
+              >
+                <CalendarDays />
+                <input
+                  ref={dateInputRef}
+                  type="date"
+                  aria-label="Travel date"
+                  value={travelDate}
+                  onChange={e => setTravelDate(e.target.value)}
+                  onClick={e => { try { (e.target as HTMLInputElement).showPicker?.(); } catch {} }}
+                  style={{ cursor: 'pointer' }}
+                />
+              </div>
+            </label>
+            <div>
+              <PassengerSelector value={passengersCount} onChange={setPassengersCount} />
+            </div>
           </div>
 
           <fieldset><legend>VEHICLE</legend><div className="vehicle-options"><button type="button" className={vehicle==='BIKE'?'selected':''} onClick={()=>setVehicle('BIKE')}>🏍️ Bike (₹2.5/km)</button><button type="button" className={vehicle==='CAR'?'selected':''} onClick={()=>setVehicle('CAR')}><Car size={18}/> Car (₹4.5/km)</button></div></fieldset>
@@ -227,13 +271,26 @@ function FindRideContent() {
                   </div>
                 </div>
                 <div className="ride-actions">
-                  <button className="ride-btn ride-btn-primary" onClick={() => setBookingRide(ride)}>
+                  <button className="ride-btn ride-btn-primary" onClick={() => {
+                    trackEvent('ride_details_viewed', {
+                      origin_city: ride.origin,
+                      destination_city: ride.destination,
+                      vehicle_type: ride.vehicle ? ride.vehicle.toLowerCase() : undefined,
+                    });
+                    setBookingRide(ride);
+                  }}>
                     ⚡ Book Ride
                   </button>
-                  <button className="ride-btn ride-btn-light" onClick={() => setActiveChatRideId(ride.id)}>
+                  <button className="ride-btn ride-btn-light" onClick={() => {
+                    trackEvent('contact_partner_clicked');
+                    setActiveChatRideId(ride.id);
+                  }}>
                     <MessageSquare size={16}/> In-App Chat
                   </button>
-                  <button className="ride-btn ride-btn-light" onClick={() => setActiveChatRideId(ride.id)}>
+                  <button className="ride-btn ride-btn-light" onClick={() => {
+                    trackEvent('contact_partner_clicked');
+                    setActiveChatRideId(ride.id);
+                  }}>
                     <Phone size={16}/> Privacy Call
                   </button>
                 </div>
@@ -244,7 +301,7 @@ function FindRideContent() {
       </section>
 
       {bookingRide && (
-        <RideBookingModal ride={bookingRide} onClose={() => setBookingRide(null)} />
+        <RideBookingModal ride={bookingRide} initialSeats={passengersCount} onClose={() => setBookingRide(null)} />
       )}
 
       {activeChatRideId && (

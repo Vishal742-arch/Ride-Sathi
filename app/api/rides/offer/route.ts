@@ -28,7 +28,11 @@ export async function POST(request: NextRequest) {
         await supabase.from('rides').insert({
           id: rideId,
           driver_id: driverId,
+          origin: fromLocation,
+          destination: toLocation,
+          vehicle_kind: vehicleKind || 'CAR',
           available_seats: Number(seatsAvailable) || 3,
+          price_per_seat: Number(pricePerSeat) || 80,
           departure_time: new Date(departureTime || Date.now()).toISOString(),
           status: 'PUBLISHED',
         });
@@ -47,6 +51,7 @@ export async function POST(request: NextRequest) {
       price_per_seat: Number(pricePerSeat) || 80,
       is_verified: true,
       created_at: new Date().toISOString(),
+      postedAt: new Date().toISOString(),
     };
 
     // Add to active published rides store so it lists instantly across all search queries

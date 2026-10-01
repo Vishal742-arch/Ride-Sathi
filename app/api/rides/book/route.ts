@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createBooking, publishedRidesStore } from '@/lib/rides-store';
 import { calculateRoadRoute, calculateFare, LocationPoint } from '@/lib/location-service';
 
 export async function POST(request: NextRequest) {
@@ -8,7 +9,7 @@ export async function POST(request: NextRequest) {
       rideId,
       seats = 1,
       passengerName,
-      passengerEmail,
+      passengerPhone,
       pickupCoords,
       dropCoords,
       vehicleType = 'CAR',
@@ -18,12 +19,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'rideId is required.' }, { status: 400 });
     }
 
-    const tripPin = Math.floor(1000 + Math.random() * 9000).toString();
-    const bookingId = `book_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const requestedSeats = Number(seats) > 0 ? Number(seats) : 1;
 
-    // Authoritative Server-side Route & Fare Calculation
-    let fareAmount = 80 * Number(seats);
-
+    // Calculate fare
+    let totalFare = 80 * requestedSeats;
     if (pickupCoords?.latitude && dropCoords?.latitude) {
       try {
         const originPoint: LocationPoint = {
@@ -43,42 +42,86 @@ export async function POST(request: NextRequest) {
 
         const routeInfo = await calculateRoadRoute(originPoint, destPoint);
         const fareCalc = calculateFare(routeInfo.distanceKm, vehicleType === 'BIKE' ? 'BIKE' : 'CAR');
-        fareAmount = Math.max(20, Math.round(fareCalc.fareAmount * Number(seats)));
+        totalFare = Math.max(20, Math.round(fareCalc.fareAmount * requestedSeats));
       } catch (err) {
-        console.warn('[Book API] Server route verification warning:', err);
+        console.warn('[Book API] Route verification warning:', err);
+      }
+    } else {
+      // Find ride in publishedRidesStore to get price per seat
+      const foundRide = publishedRidesStore.find(r => r.id === rideId);
+      if (foundRide) {
+        totalFare = foundRide.price_per_seat * requestedSeats;
       }
     }
 
-    // Get authenticated user (if logged in) for Supabase record
-    let authenticatedUserId: string | null = null;
-    let userEmail = passengerEmail;
+    // Get user from Supabase if logged in
     const supabase = await createClient();
+    let passengerId = 'anon_passenger';
+    let finalPassengerName = passengerName?.trim() || 'Commuter';
+
     if (supabase) {
       const { data: userData } = await supabase.auth.getUser();
       if (userData?.user) {
-        authenticatedUserId = userData.user.id;
-        userEmail = userEmail || userData.user.email;
+        passengerId = userData.user.id;
+        finalPassengerName = passengerName?.trim() ||
+          userData.user.user_metadata?.display_name ||
+          userData.user.user_metadata?.full_name ||
+          userData.user.email?.split('@')[0] ||
+          'Verified Passenger';
 
-        await supabase.from('bookings').insert({
-          id: bookingId,
-          ride_id: rideId,
-          passenger_id: authenticatedUserId,
-          seats: Number(seats),
-          status: 'CONFIRMED',
-          booking_final_fare: fareAmount,
+        // Execute atomic RPC procedure on Supabase database if function exists
+        const generatedBookingOtp = Math.floor(100000 + Math.random() * 900000).toString();
+        const { data: dbBookingRes, error: rpcErr } = await supabase.rpc('book_ride_seats', {
+          p_ride_id: rideId,
+          p_passenger_id: passengerId,
+          p_seats: requestedSeats,
+          p_fare: totalFare,
+          p_otp: generatedBookingOtp,
+          p_passenger_name: finalPassengerName,
+          p_passenger_phone: passengerPhone || null,
         });
+
+        if (!rpcErr && dbBookingRes && dbBookingRes.success) {
+          return NextResponse.json({
+            success: true,
+            bookingId: dbBookingRes.booking_id,
+            rideId,
+            bookingOtp: dbBookingRes.otp,
+            tripPin: dbBookingRes.otp,
+            fareAmount: totalFare,
+            seats: requestedSeats,
+            passengerName: finalPassengerName,
+            status: 'CONFIRMED',
+          });
+        }
       }
     }
 
-    // Log booking (server-side only — no payment gateway involved)
-    console.log(`[Book API] Booking confirmed: ${bookingId}, fare: ₹${fareAmount}, passenger: ${passengerName || userEmail || 'Anonymous'}`);
+    // Execute atomic in-memory booking store
+    const result = createBooking({
+      rideId,
+      seats: requestedSeats,
+      passengerName: finalPassengerName,
+      passengerPhone,
+      passengerId,
+      fareAmount: totalFare,
+    });
+
+    if (!result.success || !result.booking) {
+      return NextResponse.json({ error: result.error || 'Failed to book ride.' }, { status: 400 });
+    }
 
     return NextResponse.json({
       success: true,
-      bookingId,
+      bookingId: result.booking.id,
       rideId,
-      tripPin,
-      fareAmount,
+      bookingOtp: result.booking.booking_otp,
+      tripPin: result.booking.booking_otp,
+      fareAmount: result.booking.fareAmount,
+      seats: result.booking.seats,
+      passengerName: result.booking.passenger_name,
+      status: result.booking.status,
+      booking: result.booking,
     });
   } catch (err: any) {
     console.error('[Book API] Error:', err?.message || err);

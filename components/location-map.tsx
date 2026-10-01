@@ -16,7 +16,7 @@ interface LocationMapProps {
 declare global {
   interface Window {
     google?: any;
-    initGoogleMapsScript?: () => void;
+    L?: any;
   }
 }
 
@@ -32,10 +32,15 @@ export function LocationMap({
 }: LocationMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
+  const leafletMapRef = useRef<any>(null);
+
   const pickupMarkerRef = useRef<any>(null);
   const dropMarkerRef = useRef<any>(null);
   const polylineRef = useRef<any>(null);
+  const accuracyCircleRef = useRef<any>(null);
+
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [mapEngine, setMapEngine] = useState<'google' | 'leaflet'>('google');
 
   const apiKey =
     process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
@@ -43,45 +48,81 @@ export function LocationMap({
     process.env.MAPS_API_KEY ||
     '';
 
+  // Load Google Maps SDK or Leaflet fallback SDK
   useEffect(() => {
     if (typeof window === 'undefined' || !containerRef.current) return;
 
-    if (window.google?.maps) {
+    if (window.google?.maps && apiKey) {
+      setMapEngine('google');
       setMapLoaded(true);
       return;
     }
 
-    if (!apiKey) {
+    if (apiKey) {
+      const scriptId = 'google-maps-js-sdk';
+      let existingScript = document.getElementById(scriptId) as HTMLScriptElement;
+
+      if (!existingScript) {
+        existingScript = document.createElement('script');
+        existingScript.id = scriptId;
+        existingScript.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+        existingScript.async = true;
+        existingScript.defer = true;
+        document.head.appendChild(existingScript);
+      }
+
+      const checkLoaded = setInterval(() => {
+        if (window.google?.maps) {
+          setMapEngine('google');
+          setMapLoaded(true);
+          clearInterval(checkLoaded);
+        }
+      }, 100);
+
+      return () => clearInterval(checkLoaded);
+    }
+
+    // Leaflet fallback setup when Google API key is missing
+    setMapEngine('leaflet');
+    if (window.L) {
+      setMapLoaded(true);
       return;
     }
 
-    const scriptId = 'google-maps-js-sdk';
-    let existingScript = document.getElementById(scriptId) as HTMLScriptElement;
-
-    if (!existingScript) {
-      existingScript = document.createElement('script');
-      existingScript.id = scriptId;
-      existingScript.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
-      existingScript.async = true;
-      existingScript.defer = true;
-      document.head.appendChild(existingScript);
+    const cssId = 'leaflet-css';
+    if (!document.getElementById(cssId)) {
+      const link = document.createElement('link');
+      link.id = cssId;
+      link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(link);
     }
 
-    const checkLoaded = setInterval(() => {
-      if (window.google?.maps) {
+    const scriptId = 'leaflet-js';
+    let leafletScript = document.getElementById(scriptId) as HTMLScriptElement;
+    if (!leafletScript) {
+      leafletScript = document.createElement('script');
+      leafletScript.id = scriptId;
+      leafletScript.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      leafletScript.async = true;
+      document.head.appendChild(leafletScript);
+    }
+
+    const checkLeaflet = setInterval(() => {
+      if (window.L) {
         setMapLoaded(true);
-        clearInterval(checkLoaded);
+        clearInterval(checkLeaflet);
       }
     }, 100);
 
-    return () => clearInterval(checkLoaded);
+    return () => clearInterval(checkLeaflet);
   }, [apiKey]);
 
+  // Google Maps rendering logic
   useEffect(() => {
-    if (!mapLoaded || !window.google?.maps || !containerRef.current) return;
+    if (!mapLoaded || mapEngine !== 'google' || !window.google?.maps || !containerRef.current) return;
 
     const google = window.google;
-
     const defaultCenter = pickup
       ? { lat: pickup.latitude, lng: pickup.longitude }
       : drop
@@ -113,7 +154,7 @@ export function LocationMap({
     const map = mapRef.current;
     const bounds = new google.maps.LatLngBounds();
 
-    // Pickup Marker (Emerald Green Pin)
+    // Pickup Marker
     if (pickup) {
       const pickupPos = { lat: pickup.latitude, lng: pickup.longitude };
       bounds.extend(pickupPos);
@@ -145,12 +186,27 @@ export function LocationMap({
         pickupMarkerRef.current.setPosition(pickupPos);
         pickupMarkerRef.current.setDraggable(Boolean(onPickupDragEnd));
       }
+
+      // Render Accuracy Circle if accuracy > 0
+      if (pickup.accuracy && pickup.accuracy > 0) {
+        if (accuracyCircleRef.current) accuracyCircleRef.current.setMap(null);
+        accuracyCircleRef.current = new google.maps.Circle({
+          strokeColor: '#087c64',
+          strokeOpacity: 0.5,
+          strokeWeight: 1.5,
+          fillColor: '#087c64',
+          fillOpacity: 0.15,
+          map,
+          center: pickupPos,
+          radius: pickup.accuracy,
+        });
+      }
     } else if (pickupMarkerRef.current) {
       pickupMarkerRef.current.setMap(null);
       pickupMarkerRef.current = null;
     }
 
-    // Drop Marker (Rose Red Pin)
+    // Drop Marker
     if (drop) {
       const dropPos = { lat: drop.latitude, lng: drop.longitude };
       bounds.extend(dropPos);
@@ -217,7 +273,125 @@ export function LocationMap({
       map.setCenter({ lat: drop.latitude, lng: drop.longitude });
       map.setZoom(14);
     }
-  }, [mapLoaded, pickup, drop, polylineCoords, onPickupDragEnd, onDropDragEnd, onMapClick]);
+  }, [mapLoaded, mapEngine, pickup, drop, polylineCoords, onPickupDragEnd, onDropDragEnd, onMapClick]);
+
+  // Leaflet rendering logic (Fallback)
+  useEffect(() => {
+    if (!mapLoaded || mapEngine !== 'leaflet' || !window.L || !containerRef.current) return;
+
+    const L = window.L;
+    const defaultCenter = pickup
+      ? [pickup.latitude, pickup.longitude]
+      : drop
+      ? [drop.latitude, drop.longitude]
+      : [22.7196, 75.8577];
+
+    if (!leafletMapRef.current) {
+      const map = L.map(containerRef.current, {
+        center: defaultCenter,
+        zoom: 13,
+        zoomControl: true,
+      });
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19,
+      }).addTo(map);
+
+      if (onMapClick) {
+        map.on('click', (e: any) => {
+          onMapClick(e.latlng.lat, e.latlng.lng);
+        });
+      }
+
+      leafletMapRef.current = map;
+    }
+
+    const map = leafletMapRef.current;
+
+    // Clear existing leaflet layers
+    map.eachLayer((layer: any) => {
+      if (layer instanceof L.Marker || layer instanceof L.Polyline || layer instanceof L.Circle) {
+        map.removeLayer(layer);
+      }
+    });
+
+    const boundsGroup: any[] = [];
+
+    // Leaflet Pickup Marker
+    if (pickup) {
+      const greenIcon = L.divIcon({
+        className: 'custom-pickup-pin',
+        html: `<div style="background: #087c64; width: 22px; height: 22px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.3);"></div>`,
+        iconSize: [22, 22],
+        iconAnchor: [11, 11],
+      });
+
+      const marker = L.marker([pickup.latitude, pickup.longitude], {
+        icon: greenIcon,
+        draggable: Boolean(onPickupDragEnd),
+      }).addTo(map);
+
+      marker.bindTooltip(`📍 Pickup: ${pickup.placeName}`, { permanent: false, direction: 'top' });
+
+      if (onPickupDragEnd) {
+        marker.on('dragend', (e: any) => {
+          const { lat, lng } = e.target.getLatLng();
+          onPickupDragEnd(lat, lng);
+        });
+      }
+      boundsGroup.push([pickup.latitude, pickup.longitude]);
+
+      if (pickup.accuracy && pickup.accuracy > 0) {
+        L.circle([pickup.latitude, pickup.longitude], {
+          radius: pickup.accuracy,
+          color: '#087c64',
+          fillColor: '#087c64',
+          fillOpacity: 0.15,
+          weight: 1,
+        }).addTo(map);
+      }
+    }
+
+    // Leaflet Drop Marker
+    if (drop) {
+      const redIcon = L.divIcon({
+        className: 'custom-drop-pin',
+        html: `<div style="background: #e11d48; width: 22px; height: 22px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.3);"></div>`,
+        iconSize: [22, 22],
+        iconAnchor: [11, 11],
+      });
+
+      const marker = L.marker([drop.latitude, drop.longitude], {
+        icon: redIcon,
+        draggable: Boolean(onDropDragEnd),
+      }).addTo(map);
+
+      marker.bindTooltip(`🏁 Drop: ${drop.placeName}`, { permanent: false, direction: 'top' });
+
+      if (onDropDragEnd) {
+        marker.on('dragend', (e: any) => {
+          const { lat, lng } = e.target.getLatLng();
+          onDropDragEnd(lat, lng);
+        });
+      }
+      boundsGroup.push([drop.latitude, drop.longitude]);
+    }
+
+    // Leaflet Polyline Route
+    if (polylineCoords.length > 0) {
+      const polyline = L.polyline(polylineCoords, {
+        color: '#087c64',
+        weight: 5,
+        opacity: 0.85,
+      }).addTo(map);
+      map.fitBounds(polyline.getBounds(), { padding: [40, 40] });
+    } else if (boundsGroup.length > 1) {
+      map.fitBounds(boundsGroup, { padding: [50, 50] });
+    } else if (boundsGroup.length === 1) {
+      map.setView(boundsGroup[0], 14);
+    }
+  }, [mapLoaded, mapEngine, pickup, drop, polylineCoords, onPickupDragEnd, onDropDragEnd, onMapClick]);
 
   return (
     <div
@@ -252,7 +426,7 @@ export function LocationMap({
         >
           <div style={{ fontSize: 24 }}>🗺️</div>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#087c64' }}>
-            Google Maps Platform — Interactive Route Map
+            Loading Interactive Route Map...
           </div>
           {pickup && (
             <div style={{ fontSize: 11, color: '#166534', fontWeight: 600 }}>
@@ -280,15 +454,16 @@ export function LocationMap({
             borderRadius: 20,
             fontSize: 12,
             fontWeight: 700,
-            color: '#087c64',
+            color: interactiveMode === 'pickup' ? '#087c64' : '#e11d48',
             border: '1px solid #c3e6d8',
           }}
         >
           {interactiveMode === 'pickup'
-            ? '📍 Drag green Google pin to adjust pickup'
-            : '🏁 Drag red Google pin to adjust drop location'}
+            ? '📍 Tap map or drag green pin to move pickup location'
+            : '🏁 Tap map or drag red pin to move drop location'}
         </div>
       )}
     </div>
   );
 }
+

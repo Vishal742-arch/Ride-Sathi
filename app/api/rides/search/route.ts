@@ -13,16 +13,16 @@ export async function GET(request: NextRequest) {
   if (supabase) {
     const { data } = await supabase
       .from('rides')
-      .select('*, drivers(profiles(display_name)), vehicle_types(label)')
+      .select('id, driver_id, origin, destination, vehicle_kind, available_seats, price_per_seat, departure_time, status, created_at')
       .eq('status', 'PUBLISHED')
       .order('created_at', { ascending: false });
 
     if (data && data.length > 0) {
       dbRides = data.map((r: any) => ({
         id: r.id,
-        driver_name: r.drivers?.profiles?.display_name || 'Verified Driver',
+        driver_name: 'Verified Driver',
         driver_rating: 4.9,
-        vehicle: r.vehicle_types?.label || 'Car',
+        vehicle: r.vehicle_kind === 'BIKE' ? 'Bike' : 'Car',
         origin: r.origin || 'Indore',
         destination: r.destination || 'Ujjain',
         departure_time: new Date(r.departure_time).toLocaleString('en-IN', {
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
           month: 'short',
         }),
         available_seats: r.available_seats || 3,
-        price_per_seat: 80,
+        price_per_seat: r.price_per_seat || 80,
         is_verified: true,
         created_at: r.created_at || new Date().toISOString(),
         postedAt: r.created_at || new Date().toISOString(),

@@ -2,6 +2,7 @@
 import { Phone, Shield, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 import { CallSession } from '@/lib/calling';
+import { trackEvent } from '@/lib/analytics';
 
 interface PrivacyCallModalProps {
   rideId: string;
@@ -18,6 +19,8 @@ export function PrivacyCallModal({ rideId, recipientName, recipientRole, onClose
   const startCall = async () => {
     setLoading(true);
     setStatusText('Connecting to Ride With Me Secure Proxy...');
+    trackEvent('contact_partner_clicked');
+
     try {
       const res = await fetch('/api/calls/initiate', {
         method: 'POST',
@@ -26,6 +29,7 @@ export function PrivacyCallModal({ rideId, recipientName, recipientRole, onClose
       });
       const data = await res.json();
       if (data.session) {
+        trackEvent('communication_started');
         setSession(data.session);
         setStatusText('Proxy Connected! Dialing recipient through masked bridge...');
       } else {

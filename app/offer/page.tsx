@@ -1,10 +1,14 @@
 'use client';
 import { CalendarDays, Car, ChevronDown, CheckCircle2, MapPin, Plus, ShieldCheck, Users, X, Route } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { RouteLocationPicker } from '@/components/route-location-picker';
 import { LocationPoint, RouteInfo, FareCalculation, calculateRoadRoute, calculateFare } from '@/lib/location-service';
 
+import { trackEvent } from '@/lib/analytics';
+import { PageViewTracker } from '@/components/analytics-tracker';
+
 export default function OfferRide() {
+  const dateInputRef = useRef<HTMLInputElement>(null);
   const [vehicle, setVehicle] = useState<'BIKE' | 'CAR'>('CAR');
   const [from, setFrom] = useState<LocationPoint | null>(null);
   const [to, setTo] = useState<LocationPoint | null>(null);
@@ -56,6 +60,13 @@ export default function OfferRide() {
     setErrorMessage('');
     setLoading(true);
 
+    trackEvent('offer_ride_started', {
+      origin_city: from.city || from.placeName,
+      destination_city: to.city || to.placeName,
+      vehicle_type: vehicle.toLowerCase(),
+      number_of_seats: Number(seats),
+    });
+
     try {
       const res = await fetch('/api/rides/offer', {
         method: 'POST',
@@ -76,6 +87,18 @@ export default function OfferRide() {
       });
       const data = await res.json();
       if (data.success) {
+        trackEvent('offer_ride_completed', {
+          origin_city: from.city || from.placeName,
+          destination_city: to.city || to.placeName,
+          vehicle_type: vehicle.toLowerCase(),
+          number_of_seats: Number(seats),
+        });
+        trackEvent('ride_posted', {
+          origin_city: from.city || from.placeName,
+          destination_city: to.city || to.placeName,
+          vehicle_type: vehicle.toLowerCase(),
+          number_of_seats: Number(seats),
+        });
         setResult({ rideId: data.rideId, message: data.message });
       } else {
         setErrorMessage(data.error || 'Failed to offer ride');
@@ -89,6 +112,7 @@ export default function OfferRide() {
 
   return (
     <main className="finder-page">
+      <PageViewTracker pageName="offer_ride" />
       <section className="shell finder">
         <span className="kicker font-bold tracking-wider text-emerald-700">DRIVER SPACE • RIDE SATHI</span>
         <h1 className="text-4xl font-extrabold text-slate-900 mt-1">Offer a Ride</h1>
@@ -136,13 +160,20 @@ export default function OfferRide() {
             <div className="find-options">
               <label>
                 <span>DEPARTURE DATE & TIME</span>
-                <div className="find-input">
+                <div
+                  className="find-input cursor-pointer"
+                  onMouseEnter={() => { try { dateInputRef.current?.showPicker?.(); } catch {} }}
+                  onFocus={() => { try { dateInputRef.current?.showPicker?.(); } catch {} }}
+                >
                   <CalendarDays />
                   <input
+                    ref={dateInputRef}
                     type="datetime-local"
                     value={departureDate}
                     onChange={e => setDepartureDate(e.target.value)}
+                    onClick={e => { try { (e.target as HTMLInputElement).showPicker?.(); } catch {} }}
                     required
+                    style={{ cursor: 'pointer' }}
                   />
                 </div>
               </label>
@@ -213,7 +244,7 @@ export default function OfferRide() {
             <p className="text-slate-600 mt-2 max-w-md mx-auto">{result.message}</p>
             <div className="mt-6 flex justify-center gap-4">
               <a href={`/find?ride=${result.rideId}`} className="ride-btn ride-btn-primary">
-                View & Test Payment Checkout
+                View Listed Ride
               </a>
               <a href="/dashboard" className="ride-btn ride-btn-dark">
                 View My Dashboard

@@ -1,7 +1,7 @@
 /**
  * Location Service for Ride With Me
  * Standardized module for GPS, Geocoding, Popular Locations, Google Maps Platform,
- * Provider Abstraction, Fare Calculation, and Service Area Validation.
+ * Nominatim/OSRM Fallbacks, Provider Abstraction, Fare Calculation, and Service Area Validation.
  */
 
 export interface LocationPoint {
@@ -15,7 +15,7 @@ export interface LocationPoint {
   placeId?: string;
 }
 
-export type GPSAccuracyLevel = 'Excellent' | 'Approximate' | 'Low' | 'Unavailable';
+export type GPSAccuracyLevel = 'Excellent' | 'Good' | 'Approximate' | 'Low' | 'Unavailable';
 
 export interface GPSResult {
   location: LocationPoint | null;
@@ -54,7 +54,7 @@ export interface FareCalculation {
 export interface LocationProvider {
   name: string;
   reverseGeocode(lat: number, lng: number): Promise<LocationPoint>;
-  searchLocations(query: string): Promise<LocationPoint[]>;
+  searchLocations(query: string, currentContext?: { lat: number; lng: number }): Promise<LocationPoint[]>;
   calculateRoadRoute(origin: LocationPoint, destination: LocationPoint): Promise<RouteInfo>;
 }
 
@@ -162,16 +162,194 @@ function detectCityFromText(text: string): 'Indore' | 'Dewas' | 'Ujjain' {
 }
 
 /**
+ * Fetch precise place details (lat/lng) for a Google place_id
+ */
+async function fetchGooglePlaceDetails(placeId: string, apiKey: string): Promise<{ lat: number; lng: number; formatted_address?: string } | null> {
+  try {
+    const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=geometry,formatted_address&key=${apiKey}`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.status === 'OK' && data.result?.geometry?.location) {
+        return {
+          lat: data.result.geometry.location.lat,
+          lng: data.result.geometry.location.lng,
+          formatted_address: data.result.formatted_address,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Place details fetch error:', err);
+  }
+  return null;
+}
+
+/**
+ * OpenStreetMap / Nominatim + OSRM Provider for high accuracy without Google API key requirement
+ */
+export const NominatimProvider: LocationProvider = {
+  name: 'OpenStreetMap Nominatim + OSRM Routing',
+  async reverseGeocode(latitude: number, longitude: number): Promise<LocationPoint> {
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`;
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'RideWithMe-CarpoolApp/1.0' },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.display_name) {
+          const addr = data.address || {};
+          const city = addr.city || addr.town || addr.county || detectCityFromCoords(latitude, longitude);
+          const placeName = addr.amenity || addr.building || addr.road || addr.suburb || addr.neighbourhood || addr.amenity || data.display_name.split(',')[0] || `Location near ${city}`;
+
+          return {
+            latitude,
+            longitude,
+            placeName,
+            formattedAddress: data.display_name,
+            city: detectCityFromText(`${city} ${data.display_name}`),
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('Nominatim reverse geocode error:', err);
+    }
+
+    const city = detectCityFromCoords(latitude, longitude);
+    return {
+      latitude,
+      longitude,
+      placeName: `Point (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`,
+      formattedAddress: `${latitude.toFixed(5)}, ${longitude.toFixed(5)}, ${city}`,
+      city,
+    };
+  },
+
+  async searchLocations(query: string, currentContext?: { lat: number; lng: number }): Promise<LocationPoint[]> {
+    const q = query.toLowerCase().trim();
+    if (!q || q.length < 2) return [];
+
+    const presetMatches = POPULAR_LOCATIONS.filter(
+      loc =>
+        loc.placeName.toLowerCase().includes(q) ||
+        loc.formattedAddress.toLowerCase().includes(q) ||
+        loc.city.toLowerCase().includes(q) ||
+        (loc.area && loc.area.toLowerCase().includes(q))
+    );
+
+    try {
+      // Priority search bounded around MP region (Indore/Dewas/Ujjain box: 75.0,22.0 to 76.5,23.5)
+      const searchQuery = q.includes('indore') || q.includes('dewas') || q.includes('ujjain') || q.includes('mp') || q.includes('madhya pradesh')
+        ? q
+        : `${q}, Madhya Pradesh, India`;
+
+      const viewbox = currentContext
+        ? `&viewbox=${currentContext.lng - 0.5},${currentContext.lat - 0.5},${currentContext.lng + 0.5},${currentContext.lat + 0.5}`
+        : '&viewbox=75.0,22.0,76.5,23.5';
+
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&countrycodes=in&limit=8&addressdetails=1${viewbox}`;
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'RideWithMe-CarpoolApp/1.0' },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          const apiResults: LocationPoint[] = data.map((item: any) => {
+            const addr = item.address || {};
+            const city = addr.city || addr.town || addr.county || detectCityFromCoords(parseFloat(item.lat), parseFloat(item.lon));
+            const placeName = item.display_name.split(',')[0];
+            return {
+              latitude: parseFloat(item.lat),
+              longitude: parseFloat(item.lon),
+              placeName,
+              formattedAddress: item.display_name,
+              city: detectCityFromText(`${city} ${item.display_name}`),
+            };
+          });
+
+          const combined = [...presetMatches];
+          for (const item of apiResults) {
+            if (!combined.some(c => c.placeName.toLowerCase() === item.placeName.toLowerCase())) {
+              combined.push(item);
+            }
+          }
+          return combined.slice(0, 10);
+        }
+      }
+    } catch (err) {
+      console.warn('Nominatim search error:', err);
+    }
+
+    return presetMatches;
+  },
+
+  async calculateRoadRoute(origin: LocationPoint, destination: LocationPoint): Promise<RouteInfo> {
+    const isIntercity = origin.city.toLowerCase() !== destination.city.toLowerCase();
+    const serviceAreaValid = validateServiceArea(origin, destination);
+
+    try {
+      // OSRM public routing engine for road distance
+      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?overview=full&geometries=geojson`;
+      const res = await fetch(osrmUrl);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+          const route = data.routes[0];
+          const distanceKm = Math.max(0.5, Math.round((route.distance / 1000) * 10) / 10);
+          const durationMins = Math.max(2, Math.round(route.duration / 60));
+          const polylineCoords: [number, number][] = route.geometry.coordinates.map(
+            (c: [number, number]) => [c[1], c[0]] // convert [lng, lat] to [lat, lng]
+          );
+
+          return {
+            distanceKm,
+            durationMins,
+            formattedDistance: `${distanceKm} km`,
+            formattedDuration: `${durationMins} min`,
+            polylineCoords,
+            origin,
+            destination,
+            isIntercity,
+            serviceAreaValid,
+            isApproximateFallback: false,
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('OSRM routing error:', err);
+    }
+
+    // Fallback haversine route with road factor (1.25x)
+    const haversineDist = computeHaversineDistance(origin.latitude, origin.longitude, destination.latitude, destination.longitude);
+    const distanceKm = Math.max(0.5, Math.round(haversineDist * 1.25 * 10) / 10);
+    const durationMins = Math.max(3, Math.round((distanceKm / 35) * 60));
+
+    return {
+      distanceKm,
+      durationMins,
+      formattedDistance: `~${distanceKm} km (Approximate)`,
+      formattedDuration: `~${durationMins} min`,
+      polylineCoords: [
+        [origin.latitude, origin.longitude],
+        [destination.latitude, destination.longitude],
+      ],
+      origin,
+      destination,
+      isIntercity,
+      serviceAreaValid,
+      isApproximateFallback: true,
+      routingError: 'Using estimated road route.',
+    };
+  },
+};
+
+/**
  * Google Maps Platform Provider Implementation
  */
 export const GoogleMapsProvider: LocationProvider = {
   name: 'Google Maps Platform (Places + Geocoding + Directions)',
   async reverseGeocode(latitude: number, longitude: number): Promise<LocationPoint> {
-    const matchedPreset = findClosestPreset(latitude, longitude);
-    if (matchedPreset && matchedPreset.distanceKm < 0.5) {
-      return { ...matchedPreset.location, latitude, longitude };
-    }
-
     const apiKey = getGoogleMapsApiKey();
     if (apiKey) {
       try {
@@ -199,19 +377,13 @@ export const GoogleMapsProvider: LocationProvider = {
       }
     }
 
-    const city = detectCityFromCoords(latitude, longitude);
-    return {
-      latitude,
-      longitude,
-      placeName: `Location near ${city}`,
-      formattedAddress: `Lat: ${latitude.toFixed(4)}, Lng: ${longitude.toFixed(4)}, ${city}`,
-      city,
-    };
+    // Fall back to Nominatim provider for reverse geocoding if Google API key is missing or fails
+    return NominatimProvider.reverseGeocode(latitude, longitude);
   },
 
-  async searchLocations(query: string): Promise<LocationPoint[]> {
+  async searchLocations(query: string, currentContext?: { lat: number; lng: number }): Promise<LocationPoint[]> {
     const q = query.toLowerCase().trim();
-    if (!q) return [];
+    if (!q || q.length < 2) return [];
 
     const presetMatches = POPULAR_LOCATIONS.filter(
       loc =>
@@ -224,25 +396,49 @@ export const GoogleMapsProvider: LocationProvider = {
     const apiKey = getGoogleMapsApiKey();
     if (apiKey) {
       try {
+        const locationBias = currentContext
+          ? `&location=${currentContext.lat},${currentContext.lng}&radius=50000`
+          : '&location=22.7196,75.8577&radius=60000'; // Default bias around Indore region
+
         const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(
           query
-        )}&components=country:in&key=${apiKey}`;
+        )}&components=country:in${locationBias}&key=${apiKey}`;
         const res = await fetch(url);
         if (res.ok) {
           const data = await res.json();
           if (data.status === 'OK' && data.predictions) {
-            const apiResults: LocationPoint[] = data.predictions.map((p: any) => {
+            // For top Google place predictions, fetch real details for exact lat/lng
+            const topPredictions = data.predictions.slice(0, 6);
+            const apiResults: LocationPoint[] = [];
+
+            for (const p of topPredictions) {
               const placeName = p.structured_formatting?.main_text || p.description.split(',')[0];
               const city = detectCityFromText(p.description);
-              return {
-                latitude: 22.7196,
-                longitude: 75.8577,
-                placeName,
-                formattedAddress: p.description,
-                city,
-                placeId: p.place_id,
-              };
-            });
+              
+              // Fetch real coordinates via Place Details
+              const details = await fetchGooglePlaceDetails(p.place_id, apiKey);
+              if (details) {
+                apiResults.push({
+                  latitude: details.lat,
+                  longitude: details.lng,
+                  placeName,
+                  formattedAddress: details.formatted_address || p.description,
+                  city,
+                  placeId: p.place_id,
+                });
+              } else {
+                // Fallback to preset if close, or search Nominatim for this item
+                const preset = POPULAR_LOCATIONS.find(pl => pl.placeName.toLowerCase() === placeName.toLowerCase());
+                apiResults.push({
+                  latitude: preset ? preset.latitude : 22.7196,
+                  longitude: preset ? preset.longitude : 75.8577,
+                  placeName,
+                  formattedAddress: p.description,
+                  city,
+                  placeId: p.place_id,
+                });
+              }
+            }
 
             const combined = [...presetMatches];
             for (const item of apiResults) {
@@ -258,7 +454,8 @@ export const GoogleMapsProvider: LocationProvider = {
       }
     }
 
-    return presetMatches;
+    // Fall back to Nominatim provider if Google key not set
+    return NominatimProvider.searchLocations(query, currentContext);
   },
 
   async calculateRoadRoute(origin: LocationPoint, destination: LocationPoint): Promise<RouteInfo> {
@@ -298,44 +495,38 @@ export const GoogleMapsProvider: LocationProvider = {
       }
     }
 
-    // Explicit Fallback labeled as Approximate
-    const haversineDist = computeHaversineDistance(origin.latitude, origin.longitude, destination.latitude, destination.longitude);
-    const distanceKm = Math.max(0.5, Math.round(haversineDist * 1.25 * 10) / 10);
-    const durationMins = Math.max(3, Math.round((distanceKm / 35) * 60));
-
-    return {
-      distanceKm,
-      durationMins,
-      formattedDistance: `~${distanceKm} km (Approximate)`,
-      formattedDuration: `~${durationMins} min`,
-      polylineCoords: [
-        [origin.latitude, origin.longitude],
-        [destination.latitude, destination.longitude],
-      ],
-      origin,
-      destination,
-      isIntercity,
-      serviceAreaValid,
-      isApproximateFallback: true,
-      routingError: 'Unable to calculate precise Google road route right now. Displaying approximate distance.',
-    };
+    // Fall back to OSRM / Nominatim provider routing
+    return NominatimProvider.calculateRoadRoute(origin, destination);
   },
 };
 
 /**
- * Provider Manager configured via LOCATION_PROVIDER env var
+ * Get active provider — returns GoogleMapsProvider if API key present, else NominatimProvider
  */
 export function getActiveLocationProvider(): LocationProvider {
-  return GoogleMapsProvider;
+  return getGoogleMapsApiKey() ? GoogleMapsProvider : NominatimProvider;
 }
 
+/**
+ * Requirement 2: Accuracy Level Classification
+ * - ≤ 30 m: Excellent
+ * - 31–50 m: Good
+ * - 51–100 m: Approximate
+ * - > 100 m: Low accuracy
+ */
 export function getAccuracyLevel(accuracyInMeters?: number | null): GPSAccuracyLevel {
   if (accuracyInMeters === undefined || accuracyInMeters === null) return 'Unavailable';
   if (accuracyInMeters <= 30) return 'Excellent';
+  if (accuracyInMeters <= 50) return 'Good';
   if (accuracyInMeters <= 100) return 'Approximate';
   return 'Low';
 }
 
+/**
+ * Requirement 1: Improved GPS Location Detection
+ * Multi-sample GPS watching: Continues watching position for 4 seconds or until accuracy <= 30m,
+ * selecting the result with lowest accuracy radius (most precise).
+ */
 export async function getCurrentGPSLocation(): Promise<GPSResult> {
   if (typeof window === 'undefined' || !navigator.geolocation) {
     return {
@@ -347,36 +538,77 @@ export async function getCurrentGPSLocation(): Promise<GPSResult> {
   }
 
   return new Promise(resolve => {
-    navigator.geolocation.getCurrentPosition(
-      async position => {
-        const { latitude, longitude, accuracy } = position.coords;
-        const accuracyLevel = getAccuracyLevel(accuracy);
-        const location = await reverseGeocode(latitude, longitude);
-        location.accuracy = Math.round(accuracy);
+    let bestPosition: GeolocationPosition | null = null;
+    let watchId: number | null = null;
 
-        resolve({
-          location,
-          accuracy: Math.round(accuracy),
-          accuracyLevel,
-        });
-      },
-      error => {
-        let msg = 'Unable to detect location.';
-        if (error.code === error.PERMISSION_DENIED) {
-          msg = 'Location permission was denied. You can search for your pickup location or select it manually on the map.';
-        } else if (error.code === error.POSITION_UNAVAILABLE) {
-          msg = 'Location position is currently unavailable.';
-        } else if (error.code === error.TIMEOUT) {
-          msg = 'Location request timed out. Please try again or select manually.';
-        }
+    const stopWatchingAndResolve = async (positionToUse: GeolocationPosition | null, errorMsg?: string) => {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+
+      if (!positionToUse) {
         resolve({
           location: null,
           accuracy: null,
           accuracyLevel: 'Unavailable',
-          error: msg,
+          error: errorMsg || 'Unable to detect accurate GPS location.',
         });
+        return;
+      }
+
+      const { latitude, longitude, accuracy } = positionToUse.coords;
+      const accuracyLevel = getAccuracyLevel(accuracy);
+      const location = await reverseGeocode(latitude, longitude);
+      location.accuracy = Math.round(accuracy);
+
+      resolve({
+        location,
+        accuracy: Math.round(accuracy),
+        accuracyLevel,
+      });
+    };
+
+    // Watch position for 4 seconds to get the best accuracy sample
+    const maxWatchTimeTimer = setTimeout(() => {
+      stopWatchingAndResolve(bestPosition);
+    }, 4000);
+
+    watchId = navigator.geolocation.watchPosition(
+      position => {
+        if (!bestPosition || position.coords.accuracy < bestPosition.coords.accuracy) {
+          bestPosition = position;
+        }
+
+        // If accuracy is Excellent (<= 30 meters), resolve immediately
+        if (position.coords.accuracy <= 30) {
+          clearTimeout(maxWatchTimeTimer);
+          stopWatchingAndResolve(position);
+        }
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 }
+      error => {
+        let msg = 'Unable to detect location.';
+        if (error.code === error.PERMISSION_DENIED) {
+          msg = 'Location permission was denied. Please select your location on the map or search above.';
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          msg = 'GPS signal is currently unavailable.';
+        } else if (error.code === error.TIMEOUT) {
+          msg = 'Location request timed out. Please try again.';
+        }
+
+        if (bestPosition) {
+          clearTimeout(maxWatchTimeTimer);
+          stopWatchingAndResolve(bestPosition);
+        } else {
+          clearTimeout(maxWatchTimeTimer);
+          stopWatchingAndResolve(null, msg);
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 8000,
+        maximumAge: 0, // Fresh coordinates only
+      }
     );
   });
 }
@@ -386,9 +618,9 @@ export async function reverseGeocode(lat: number, lng: number): Promise<Location
   return provider.reverseGeocode(lat, lng);
 }
 
-export async function searchLocations(query: string): Promise<LocationPoint[]> {
+export async function searchLocations(query: string, currentContext?: { lat: number; lng: number }): Promise<LocationPoint[]> {
   const provider = getActiveLocationProvider();
-  return provider.searchLocations(query);
+  return provider.searchLocations(query, currentContext);
 }
 
 export async function calculateRoadRoute(origin: LocationPoint, destination: LocationPoint): Promise<RouteInfo> {
@@ -475,3 +707,4 @@ function findClosestPreset(lat: number, lng: number) {
   }
   return closest ? { location: closest, distanceKm: minDistance } : null;
 }
+
