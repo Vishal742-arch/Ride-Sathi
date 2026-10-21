@@ -13,8 +13,16 @@ export async function POST(request: NextRequest) {
     // Try Supabase DB first
     const supabase = await createClient();
     if (supabase) {
+      const { data: userData } = await supabase.auth.getUser();
+      const currentUserId = userData?.user?.id;
+
       const { data: booking } = await supabase.from('bookings').select('*, rides(*)').eq('id', bookingId).single();
       if (booking) {
+        // Enforce authorization if user is authenticated
+        if (currentUserId && booking.passenger_id && booking.passenger_id !== currentUserId && booking.rides?.driver_id !== currentUserId) {
+          return NextResponse.json({ error: 'Unauthorized: You can only cancel your own booking.' }, { status: 403 });
+        }
+
         if (booking.status === 'CANCELLED') {
           return NextResponse.json({ error: 'Booking is already cancelled.' }, { status: 400 });
         }

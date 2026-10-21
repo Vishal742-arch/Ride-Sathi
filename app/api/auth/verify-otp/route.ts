@@ -33,8 +33,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid verification code. Please check and try again.' }, { status: 400 });
     }
 
-    // OTP match! Mark as verified
-    record.verified = true;
+    // OTP match! Invalidate record immediately to enforce single-use
+    delete authOtpStore[cleanPhone];
 
     // Update Supabase profile if authenticated
     const supabase = await createClient();

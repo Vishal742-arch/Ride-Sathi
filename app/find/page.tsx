@@ -52,9 +52,13 @@ function FindRideContent() {
     const fromParam = searchParams.get('from');
     const toParam = searchParams.get('to');
     const dateParam = searchParams.get('date');
+    const seatsParam = searchParams.get('seats');
 
     if (dateParam) {
       setTravelDate(dateParam);
+    }
+    if (seatsParam && Number(seatsParam) > 0) {
+      setPassengersCount(Number(seatsParam));
     }
 
     async function initFromParams() {
@@ -92,7 +96,7 @@ function FindRideContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Recalculate route & fare whenever pickup, drop or vehicle type changes
+  // Recalculate route & fare whenever pickup, drop, vehicle or passengersCount changes
   useEffect(() => {
     if (!pickup || !drop) {
       setRouteInfo(null);
@@ -104,7 +108,7 @@ function FindRideContent() {
       setRouteLoading(true);
       try {
         const info = await calculateRoadRoute(pickup!, drop!);
-        const fare = calculateFare(info.distanceKm, vehicle);
+        const fare = calculateFare(info.distanceKm, vehicle, passengersCount);
         setRouteInfo(info);
         setFareInfo(fare);
       } catch (err) {
@@ -115,7 +119,7 @@ function FindRideContent() {
     }
 
     updateRoute();
-  }, [pickup, drop, vehicle]);
+  }, [pickup, drop, vehicle, passengersCount]);
 
   const fetchRides = async (fromQuery?: string, toQuery?: string) => {
     try {
@@ -189,8 +193,17 @@ function FindRideContent() {
                     <strong style={{ fontSize: 15, color: '#0f172a' }}>{routeInfo.formattedDuration}</strong>
                   </div>
                   <div>
-                    <span style={{ fontSize: 11, color: '#64748b', display: 'block', fontWeight: 600 }}>ESTIMATED FARE</span>
-                    <strong style={{ fontSize: 16, color: '#087c64', fontWeight: 900 }}>{fareInfo.formattedFare}</strong>
+                    <span style={{ fontSize: 11, color: '#64748b', display: 'block', fontWeight: 600 }}>
+                      ESTIMATED FARE ({passengersCount} {passengersCount === 1 ? 'PASSENGER' : 'PASSENGERS'})
+                    </span>
+                    <strong style={{ fontSize: 16, color: '#087c64', fontWeight: 900 }}>
+                      ₹{fareInfo.fareAmount.toFixed(1)}
+                      {passengersCount > 1 && (
+                        <span style={{ fontSize: 11, color: '#64748b', fontWeight: 500, marginLeft: 6 }}>
+                          (₹{fareInfo.perSeatFare.toFixed(1)}/seat × {passengersCount})
+                        </span>
+                      )}
+                    </strong>
                   </div>
                   <div>
                     <span style={{ fontSize: 11, color: '#64748b', display: 'block', fontWeight: 600 }}>MODE</span>
@@ -231,11 +244,37 @@ function FindRideContent() {
               </div>
             </label>
             <div>
-              <PassengerSelector value={passengersCount} onChange={setPassengersCount} />
+              <PassengerSelector
+                value={passengersCount}
+                onChange={setPassengersCount}
+                max={vehicle === 'BIKE' ? 1 : 4}
+                label={vehicle === 'BIKE' ? 'Passenger (Bike max 1)' : 'Passengers'}
+              />
             </div>
           </div>
 
-          <fieldset><legend>VEHICLE</legend><div className="vehicle-options"><button type="button" className={vehicle==='BIKE'?'selected':''} onClick={()=>setVehicle('BIKE')}>🏍️ Bike (₹2.5/km)</button><button type="button" className={vehicle==='CAR'?'selected':''} onClick={()=>setVehicle('CAR')}><Car size={18}/> Car (₹4.5/km)</button></div></fieldset>
+          <fieldset>
+            <legend>VEHICLE</legend>
+            <div className="vehicle-options">
+              <button
+                type="button"
+                className={vehicle === 'BIKE' ? 'selected' : ''}
+                onClick={() => {
+                  setVehicle('BIKE');
+                  if (passengersCount > 1) setPassengersCount(1);
+                }}
+              >
+                🏍️ Bike (₹2.5/km • 1 Seat)
+              </button>
+              <button
+                type="button"
+                className={vehicle === 'CAR' ? 'selected' : ''}
+                onClick={() => setVehicle('CAR')}
+              >
+                <Car size={18} /> Car (₹4.5/km • Up to 4 Seats)
+              </button>
+            </div>
+          </fieldset>
 
           <button className="search-button"><Search size={18}/> Find available rides</button>
           {message&&<p className="form-note" role="status">{message}</p>}

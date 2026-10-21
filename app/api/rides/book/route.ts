@@ -41,16 +41,38 @@ export async function POST(request: NextRequest) {
         };
 
         const routeInfo = await calculateRoadRoute(originPoint, destPoint);
-        const fareCalc = calculateFare(routeInfo.distanceKm, vehicleType === 'BIKE' ? 'BIKE' : 'CAR');
-        totalFare = Math.max(20, Math.round(fareCalc.fareAmount * requestedSeats));
+        const fareCalc = calculateFare(routeInfo.distanceKm, vehicleType === 'BIKE' ? 'BIKE' : 'CAR', requestedSeats);
+        totalFare = Math.max(20, Math.round(fareCalc.fareAmount));
       } catch (err) {
         console.warn('[Book API] Route verification warning:', err);
       }
     } else {
-      // Find ride in publishedRidesStore to get price per seat
+      // Find ride in publishedRidesStore or Supabase database to get price per seat
       const foundRide = publishedRidesStore.find(r => r.id === rideId);
       if (foundRide) {
         totalFare = foundRide.price_per_seat * requestedSeats;
+      } else {
+        const supabaseCheck = await createClient();
+        if (supabaseCheck) {
+          const { data: dbRide } = await supabaseCheck.from('rides').select('*').eq('id', rideId).single();
+          if (dbRide) {
+            totalFare = (dbRide.price_per_seat || 80) * requestedSeats;
+            // Also cache into publishedRidesStore for seamless booking lifecycle
+            publishedRidesStore.unshift({
+              id: dbRide.id,
+              driver_name: 'Verified Driver',
+              driver_rating: 4.9,
+              vehicle: dbRide.vehicle_kind === 'BIKE' ? 'Bike' : 'Car',
+              origin: dbRide.origin,
+              destination: dbRide.destination,
+              departure_time: new Date(dbRide.departure_time).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }),
+              available_seats: dbRide.available_seats,
+              price_per_seat: dbRide.price_per_seat || 80,
+              is_verified: true,
+              created_at: dbRide.created_at || new Date().toISOString(),
+            });
+          }
+        }
       }
     }
 

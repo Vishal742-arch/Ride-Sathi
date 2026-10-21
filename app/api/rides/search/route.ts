@@ -40,8 +40,15 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Combine database rides and active in-memory published rides store
-  const allRides = [...publishedRidesStore, ...dbRides];
+  // Combine database rides and active in-memory published rides store, deduplicating by ID
+  const rideMap = new Map<string, PublishedRide>();
+  for (const r of dbRides) {
+    rideMap.set(r.id, r);
+  }
+  for (const r of publishedRidesStore) {
+    rideMap.set(r.id, r);
+  }
+  const allRides = Array.from(rideMap.values());
 
   // Filter rides matching from & to search parameters
   let filteredRides = allRides;

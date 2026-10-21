@@ -43,8 +43,11 @@ export interface FareCalculation {
   vehicleType: 'BIKE' | 'CAR';
   ratePerKm: number;
   baseFare: number;
+  perSeatFare: number;
   fareAmount: number;
+  passengers: number;
   formattedFare: string;
+  formattedPerSeatFare: string;
   isApproximateEstimate?: boolean;
 }
 
@@ -628,20 +631,38 @@ export async function calculateRoadRoute(origin: LocationPoint, destination: Loc
   return provider.calculateRoadRoute(origin, destination);
 }
 
-export function calculateFare(roadDistanceKm: number, vehicleType: 'BIKE' | 'CAR', isApproximate?: boolean): FareCalculation {
+export function calculateFare(
+  roadDistanceKm: number,
+  vehicleType: 'BIKE' | 'CAR',
+  passengers: number = 1,
+  isApproximate?: boolean
+): FareCalculation {
   const ratePerKm = vehicleType === 'BIKE' ? VEHICLE_RATES.BIKE : VEHICLE_RATES.CAR;
   const baseFare = vehicleType === 'BIKE' ? 10 : 20;
 
-  const rawFare = Math.max(baseFare, roadDistanceKm * ratePerKm);
-  const fareAmount = Math.round(rawFare * 10) / 10;
+  // Exact basic fare per seat: distance * rate (respecting minimum base fare)
+  const rawPerSeatFare = Math.max(baseFare, roadDistanceKm * ratePerKm);
+  const perSeatFare = Math.round(rawPerSeatFare * 10) / 10;
+
+  // Bike permits only 1 passenger seat for safety and compliance
+  const seatCount = vehicleType === 'BIKE' ? 1 : Math.max(1, passengers);
+  const fareAmount = Math.round(perSeatFare * seatCount * 10) / 10;
+
+  const formattedPerSeat = `₹${perSeatFare.toFixed(1)}/seat`;
+  const formattedFare = seatCount > 1
+    ? `₹${fareAmount.toFixed(1)} (${formattedPerSeat} × ${seatCount} seats)${isApproximate ? ' (Est.)' : ''}`
+    : `₹${fareAmount.toFixed(1)}${isApproximate ? ' (Est.)' : ''}`;
 
   return {
     roadDistanceKm,
     vehicleType,
     ratePerKm,
     baseFare,
+    perSeatFare,
     fareAmount,
-    formattedFare: `₹${fareAmount.toFixed(2)}${isApproximate ? ' (Est.)' : ''}`,
+    passengers: seatCount,
+    formattedFare,
+    formattedPerSeatFare: formattedPerSeat,
     isApproximateEstimate: isApproximate,
   };
 }

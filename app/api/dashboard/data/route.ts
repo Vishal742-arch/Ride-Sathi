@@ -68,22 +68,24 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Combine with active in-memory stores
-    const inMemoryCommutes = bookingsStore
-      .filter(b => b.status !== 'CANCELLED')
-      .map(b => ({
-        id: b.id,
-        rideId: b.ride_id,
-        origin: b.origin,
-        destination: b.destination,
-        departureTime: b.departure_time,
-        vehicle: b.vehicle,
-        fareAmount: b.fareAmount,
-        seats: b.seats,
-        status: b.status,
-        tripPin: b.booking_otp,
-        bookingOtp: b.booking_otp,
-      }));
+    // Only show genuine bookings belonging to the user
+    const userCommutes = currentUser
+      ? bookingsStore.filter(b => b.passenger_id === currentUser.id && b.status !== 'CANCELLED')
+      : [];
+
+    const inMemoryCommutes = userCommutes.map(b => ({
+      id: b.id,
+      rideId: b.ride_id,
+      origin: b.origin,
+      destination: b.destination,
+      departureTime: b.departure_time,
+      vehicle: b.vehicle,
+      fareAmount: b.fareAmount,
+      seats: b.seats,
+      status: b.status,
+      tripPin: b.booking_otp,
+      bookingOtp: b.booking_otp,
+    }));
 
     const inMemoryAvailableRides = publishedRidesStore
       .filter(r => r.status === 'PUBLISHED' && r.available_seats > 0)
@@ -106,6 +108,7 @@ export async function GET(request: NextRequest) {
         },
       }));
 
+    // Deduplicate rides and commutes
     const upcomingCommutes = [...inMemoryCommutes, ...dbCommutes];
     const availableRides = [...inMemoryAvailableRides, ...dbAvailableRides];
 

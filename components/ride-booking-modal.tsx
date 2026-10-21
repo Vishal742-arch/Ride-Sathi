@@ -20,7 +20,9 @@ interface RideBookingModalProps {
 }
 
 export function RideBookingModal({ ride, initialSeats = 1, onClose }: RideBookingModalProps) {
-  const [seats, setSeats] = useState(Math.min(initialSeats, ride.available_seats || 4));
+  const isBike = ride.vehicle?.toLowerCase().includes('bike');
+  const maxSeats = isBike ? 1 : (ride.available_seats || 4);
+  const [seats, setSeats] = useState(Math.min(initialSeats, maxSeats));
   const [passengerName, setPassengerName] = useState('');
   const [passengerPhone, setPassengerPhone] = useState('');
   const [loading, setLoading] = useState(false);
@@ -187,8 +189,8 @@ export function RideBookingModal({ ride, initialSeats = 1, onClose }: RideBookin
                 <PassengerSelector
                   value={seats}
                   onChange={setSeats}
-                  max={ride.available_seats || 4}
-                  label="Seats to Book"
+                  max={maxSeats}
+                  label={isBike ? 'Seat to Book (Bike max 1)' : 'Seats to Book'}
                 />
               </div>
 
@@ -211,7 +213,14 @@ export function RideBookingModal({ ride, initialSeats = 1, onClose }: RideBookin
             <div className="privacy-modal-footer" style={{ padding: '16px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <span style={{ fontSize: 11, color: '#64748b', display: 'block', fontWeight: 600 }}>TOTAL FARE</span>
-                <strong style={{ fontSize: 20, color: '#087c64', fontWeight: 900 }}>₹{totalFare}</strong>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                  <strong style={{ fontSize: 20, color: '#087c64', fontWeight: 900 }}>₹{totalFare}</strong>
+                  {seats > 1 && (
+                    <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>
+                      (₹{ride.price_per_seat} × {seats} seats)
+                    </span>
+                  )}
+                </div>
               </div>
               <button
                 className="ride-btn ride-btn-primary"

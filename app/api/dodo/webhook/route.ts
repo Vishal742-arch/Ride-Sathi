@@ -37,8 +37,12 @@ export async function POST(request: NextRequest) {
   const signature = request.headers.get('webhook-signature') || request.headers.get('x-dodo-signature') || '';
   const webhookSecret = process.env.DODO_PAYMENTS_WEBHOOK_SECRET;
 
-  // Signature verification when webhook secret is configured
-  if (webhookSecret && signature) {
+  // Signature verification: strictly enforce when secret is configured
+  if (webhookSecret) {
+    if (!signature) {
+      console.error('[Dodo Webhook] Missing webhook signature header.');
+      return NextResponse.json({ error: 'Missing webhook signature' }, { status: 401 });
+    }
     const isValid = await verifyDodoSignature(rawBody, signature, webhookSecret);
     if (!isValid) {
       console.error('[Dodo Webhook] Invalid webhook signature – request rejected.');

@@ -25,6 +25,25 @@ export default function OfferRide() {
   const [result, setResult] = useState<{ rideId: string; message: string } | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
 
+  const handleVehicleChange = (newVehicle: 'BIKE' | 'CAR') => {
+    setVehicle(newVehicle);
+    const newSeats = newVehicle === 'BIKE' ? '1' : (seats === '1' ? '3' : seats);
+    setSeats(newSeats);
+    if (from && to && routeInfo) {
+      const fare = calculateFare(routeInfo.distanceKm, newVehicle, Number(newSeats));
+      setFareInfo(fare);
+      setPrice(String(Math.round(fare.perSeatFare)));
+    }
+  };
+
+  const handleSeatsChange = (newSeats: string) => {
+    setSeats(newSeats);
+    if (routeInfo) {
+      const fare = calculateFare(routeInfo.distanceKm, vehicle, Number(newSeats));
+      setFareInfo(fare);
+    }
+  };
+
   // Update route info and suggested price when locations or vehicle change
   useEffect(() => {
     if (!from || !to) {
@@ -37,10 +56,11 @@ export default function OfferRide() {
       setRouteLoading(true);
       try {
         const info = await calculateRoadRoute(from!, to!);
-        const fare = calculateFare(info.distanceKm, vehicle);
+        const currentSeats = vehicle === 'BIKE' ? 1 : (Number(seats) || 1);
+        const fare = calculateFare(info.distanceKm, vehicle, currentSeats);
         setRouteInfo(info);
         setFareInfo(fare);
-        setPrice(String(Math.round(fare.fareAmount)));
+        setPrice(String(Math.round(fare.perSeatFare)));
       } catch (err) {
         console.error('Route calculation error:', err);
       } finally {
@@ -135,9 +155,12 @@ export default function OfferRide() {
             {/* Calculated Road Distance & Recommended Price */}
             {from && to && routeInfo && fareInfo && (
               <div style={{ background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: 16, padding: 14, display: 'grid', gap: 10 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
                   <span style={{ fontSize: 12, fontWeight: 800, color: '#166534', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Route size={16} /> ROUTE DISTANCE & SUGGESTED SEAT RATE
+                    <Route size={16} /> ROUTE DISTANCE & SUGGESTED FARE RATE
+                  </span>
+                  <span style={{ fontSize: 11, color: '#15803d', fontWeight: 600 }}>
+                    {vehicle === 'BIKE' ? '🏍️ ₹2.5/km (Bike max 1 seat)' : '🚗 ₹4.5/km (Car per-seat rate)'}
                   </span>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, background: '#fff', padding: 12, borderRadius: 12, border: '1px solid #dcfce7' }}>
@@ -150,8 +173,16 @@ export default function OfferRide() {
                     <strong style={{ fontSize: 15, color: '#0f172a' }}>{routeInfo.formattedDuration}</strong>
                   </div>
                   <div>
-                    <span style={{ fontSize: 11, color: '#64748b', display: 'block', fontWeight: 600 }}>SUGGESTED PRICE</span>
-                    <strong style={{ fontSize: 16, color: '#087c64', fontWeight: 900 }}>₹{fareInfo.fareAmount} / seat</strong>
+                    <span style={{ fontSize: 11, color: '#64748b', display: 'block', fontWeight: 600 }}>SUGGESTED / SEAT</span>
+                    <strong style={{ fontSize: 16, color: '#087c64', fontWeight: 900 }}>₹{fareInfo.perSeatFare} / seat</strong>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: 11, color: '#64748b', display: 'block', fontWeight: 600 }}>
+                      TOTAL TRIP FARE ({seats} {Number(seats) === 1 ? 'SEAT' : 'SEATS'})
+                    </span>
+                    <strong style={{ fontSize: 16, color: '#047857', fontWeight: 900 }}>
+                      ₹{Math.round(fareInfo.perSeatFare * Number(seats))}
+                    </strong>
                   </div>
                 </div>
               </div>
@@ -181,20 +212,44 @@ export default function OfferRide() {
                 <span>AVAILABLE SEATS</span>
                 <div className="find-input">
                   <Users />
-                  <select value={seats} onChange={e => setSeats(e.target.value)}>
-                    <option value="1">1 Seat</option>
-                    <option value="2">2 Seats</option>
-                    <option value="3">3 Seats</option>
-                    <option value="4">4 Seats</option>
+                  <select
+                    value={seats}
+                    onChange={e => handleSeatsChange(e.target.value)}
+                    disabled={vehicle === 'BIKE'}
+                  >
+                    <option value="1">1 Seat {vehicle === 'BIKE' ? '(Bike Max)' : ''}</option>
+                    {vehicle !== 'BIKE' && (
+                      <>
+                        <option value="2">2 Seats</option>
+                        <option value="3">3 Seats</option>
+                        <option value="4">4 Seats</option>
+                      </>
+                    )}
                   </select>
                   <ChevronDown size={15} />
                 </div>
+                {vehicle === 'BIKE' ? (
+                  <span style={{ fontSize: 11, color: '#64748b', marginTop: 4, display: 'block' }}>
+                    🏍️ Bike rides only allow 1 passenger seat for safety and compliance.
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 11, color: '#64748b', marginTop: 4, display: 'block' }}>
+                    Offering {seats} seats • Total fare: ₹{Math.round((Number(price) || 0) * Number(seats))}
+                  </span>
+                )}
               </label>
             </div>
 
             <div className="mt-4">
               <label>
-                <span>PRICE PER SEAT (₹)</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 4 }}>
+                  <span>PRICE PER SEAT (₹)</span>
+                  <span style={{ fontSize: 12, color: '#087c64', fontWeight: 700 }}>
+                    {Number(seats) > 1
+                      ? `Total Potential: ₹${Math.round((Number(price) || 0) * Number(seats))} (${seats} seats × ₹${price || 0})`
+                      : `Total Potential: ₹${price || 0} (1 seat)`}
+                  </span>
+                </div>
                 <div className="find-input">
                   <span className="font-extrabold text-emerald-700">₹</span>
                   <input
@@ -215,16 +270,16 @@ export default function OfferRide() {
                 <button
                   type="button"
                   className={vehicle === 'BIKE' ? 'selected' : ''}
-                  onClick={() => setVehicle('BIKE')}
+                  onClick={() => handleVehicleChange('BIKE')}
                 >
-                  🏍️ Bike (₹2.5/km)
+                  🏍️ Bike (₹2.5/km • 1 Seat)
                 </button>
                 <button
                   type="button"
                   className={vehicle === 'CAR' ? 'selected' : ''}
-                  onClick={() => setVehicle('CAR')}
+                  onClick={() => handleVehicleChange('CAR')}
                 >
-                  <Car size={18} /> Car (₹4.5/km)
+                  <Car size={18} /> Car (₹4.5/km • Up to 4 Seats)
                 </button>
               </div>
             </fieldset>

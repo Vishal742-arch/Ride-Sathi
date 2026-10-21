@@ -4,10 +4,12 @@ import { calculateRoadRoute, calculateFare, LocationPoint } from '@/lib/location
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { origin, destination, vehicleType = 'CAR' } = body as {
+    const { origin, destination, vehicleType = 'CAR', passengers = 1, seats = 1 } = body as {
       origin: LocationPoint;
       destination: LocationPoint;
       vehicleType?: 'BIKE' | 'CAR';
+      passengers?: number;
+      seats?: number;
     };
 
     if (!origin || !destination || typeof origin.latitude !== 'number' || typeof destination.latitude !== 'number') {
@@ -18,7 +20,8 @@ export async function POST(request: NextRequest) {
     }
 
     const routeInfo = await calculateRoadRoute(origin, destination);
-    const fareInfo = calculateFare(routeInfo.distanceKm, vehicleType);
+    const count = Number(passengers || seats) || 1;
+    const fareInfo = calculateFare(routeInfo.distanceKm, vehicleType, count);
 
     return NextResponse.json({
       success: true,

@@ -15,29 +15,60 @@ export async function POST(request: NextRequest) {
       ? new Date(departureTime).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })
       : 'Today, 08:30 AM';
 
+    // Authenticate user: Only registered and logged-in users can offer a ride
     const supabase = await createClient();
-    let driverName = 'You (Driver ✓)';
-    let driverId: string | null = null;
-
-    if (supabase) {
-      const { data: userData } = await supabase.auth.getUser();
-      if (userData?.user) {
-        driverId = userData.user.id;
-        driverName = userData.user.user_metadata?.display_name || userData.user.user_metadata?.full_name || userData.user.email?.split('@')[0] || 'Verified Driver';
-        
-        await supabase.from('rides').insert({
-          id: rideId,
-          driver_id: driverId,
-          origin: fromLocation,
-          destination: toLocation,
-          vehicle_kind: vehicleKind || 'CAR',
-          available_seats: Number(seatsAvailable) || 3,
-          price_per_seat: Number(pricePerSeat) || 80,
-          departure_time: new Date(departureTime || Date.now()).toISOString(),
-          status: 'PUBLISHED',
-        });
-      }
+    if (!supabase) {
+      return NextResponse.json({ error: 'Database service unavailable. Please try again.' }, { status: 503 });
     }
+
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData?.user) {
+      return NextResponse.json({ error: 'Authentication required. Please log in to offer a ride.' }, { status: 401 });
+    }
+
+    const driverId = userData.user.id;
+    const driverName =
+      userData.user.user_metadata?.display_name ||
+      userData.user.user_metadata?.full_name ||
+      userData.user.email?.split('@')[0] ||
+      'Verified Driver';
+
+    // Validate seats
+    const seatsNum = Number(seatsAvailable);
+    const maxSeats = vehicleKind === 'BIKE' ? 1 : 4;
+    if (isNaN(seatsNum) || seatsNum < 1 || seatsNum > maxSeats) {
+      return NextResponse.json(
+        { error: `Invalid seat count. For ${vehicleKind || 'CAR'}, seats must be between 1 and ${maxSeats}.` },
+        { status: 400 }
+      );
+    }
+
+    // Validate price per seat
+    const priceNum = Number(pricePerSeat);
+    if (isNaN(priceNum) || priceNum <= 0 || priceNum > 5000) {
+      return NextResponse.json({ error: 'Price per seat must be a positive amount up to ₹5000.' }, { status: 400 });
+    }
+
+    // Validate departure time: cannot be in the past
+    const depDate = departureTime ? new Date(departureTime) : new Date();
+    if (isNaN(depDate.getTime())) {
+      return NextResponse.json({ error: 'Invalid departure time format.' }, { status: 400 });
+    }
+    if (depDate.getTime() < Date.now() - 5 * 60 * 1000) {
+      return NextResponse.json({ error: 'Departure time cannot be in the past.' }, { status: 400 });
+    }
+
+    await supabase.from('rides').insert({
+      id: rideId,
+      driver_id: driverId,
+      origin: fromLocation,
+      destination: toLocation,
+      vehicle_kind: vehicleKind || 'CAR',
+      available_seats: seatsNum,
+      price_per_seat: priceNum,
+      departure_time: depDate.toISOString(),
+      status: 'PUBLISHED',
+    });
 
     const newRide = {
       id: rideId,

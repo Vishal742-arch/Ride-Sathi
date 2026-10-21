@@ -24,7 +24,6 @@ export default function Home() {
   const [passengers, setPassengers] = useState('1');
   const [searched, setSearched] = useState(false);
   const [message, setMessage] = useState('');
-  const [selectedRide, setSelectedRide] = useState<typeof rides[number] | null>(null);
 
   const search = () => {
     if (!from.trim() || !to.trim()) { setMessage('Enter both locations to search for rides.'); return; }
@@ -63,12 +62,50 @@ export default function Home() {
 
     <section id="ride-results" className={`bbc-results ${searched ? 'is-visible' : ''}`}>
       <div className="shell">
-        <div className="bbc-section-title"><div><p>RIDES FOR YOU</p><h2>{from} <span>→</span> {to}</h2><small>{date || 'Today'} · {passengers} passenger · 3 rides available</small></div><button type="button" onClick={() => setSearched(false)}>Close results</button></div>
-        <div className="bbc-ride-list">{rides.map((ride) => <article key={ride.driver} className="bbc-ride-card"><div className="bbc-schedule"><strong>{ride.time}</strong><span /><strong>{ride.arrival}</strong></div><div className="bbc-stop"><b>{ride.stop}</b><small>{ride.car}</small></div><div className="bbc-driver"><span>{ride.driver[0]}</span><div><b>{ride.driver}</b><small><Star size={12} fill="currentColor" /> {ride.rating}</small></div></div><div className="bbc-price"><b>{ride.price}</b><small>{ride.seats}</small><button type="button" onClick={() => setSelectedRide(ride)}>Choose</button></div></article>)}</div>
+        <div className="bbc-section-title">
+          <div>
+            <p>RIDES FOR YOU</p>
+            <h2>{from} <span>→</span> {to}</h2>
+            <small>{date || 'Today'} · {passengers} passenger{Number(passengers) > 1 ? 's' : ''}</small>
+          </div>
+          <button type="button" onClick={() => setSearched(false)}>Close results</button>
+        </div>
+        <div className="bbc-ride-list">
+          {rides.map((ride) => (
+            <article key={ride.driver} className="bbc-ride-card">
+              <div className="bbc-schedule"><strong>{ride.time}</strong><span /><strong>{ride.arrival}</strong></div>
+              <div className="bbc-stop"><b>{ride.stop}</b><small>{ride.car}</small></div>
+              <div className="bbc-driver">
+                <span>{ride.driver[0]}</span>
+                <div><b>{ride.driver}</b><small><Star size={12} fill="currentColor" /> {ride.rating}</small></div>
+              </div>
+              <div className="bbc-price">
+                <b>{ride.price}</b>
+                <small>{ride.seats}</small>
+                <Link
+                  href={`/find?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${encodeURIComponent(date)}&seats=${encodeURIComponent(passengers)}`}
+                  className="search-button"
+                  style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 700 }}
+                >
+                  View & Book
+                </Link>
+              </div>
+            </article>
+          ))}
+        </div>
       </div>
     </section>
 
-    <section className="bbc-benefits"><div className="shell bbc-benefits-grid"><div><p className="bbc-kicker">WHY SHARE A RIDE?</p><h2>A simple way to move.</h2><p>Designed for people travelling between Indore, Dewas, Ujjain and the places in between.</p></div><article><CircleCheck /><h3>Book with confidence</h3><p>See the driver, vehicle, price, and pickup point before choosing.</p></article><article><CarFront /><h3>Driving soon?</h3><p>Fill empty seats and make the cost of the journey lighter.</p><Link href="/offer">Offer a ride <ArrowRight size={16} /></Link></article></div></section>
-    {selectedRide && <div className="bbc-modal-backdrop" role="presentation" onClick={() => setSelectedRide(null)}><section className="bbc-modal" role="dialog" aria-modal="true" aria-label="Ride details" onClick={(event) => event.stopPropagation()}><button className="bbc-modal-close" type="button" onClick={() => setSelectedRide(null)} aria-label="Close">×</button><p className="bbc-kicker">YOUR RIDE</p><h2>{from} <span>→</span> {to}</h2><div className="bbc-modal-route"><b>{selectedRide.time}</b><i /><b>{selectedRide.arrival}</b></div><div className="bbc-modal-driver"><span>{selectedRide.driver[0]}</span><div><b>{selectedRide.driver}</b><small><Star size={13} fill="currentColor" /> {selectedRide.rating} · Verified profile</small></div></div><p className="bbc-modal-detail">{selectedRide.car} · Pickup at {selectedRide.stop}</p><div className="bbc-modal-footer"><div><b>{selectedRide.price}</b><small>{selectedRide.seats}</small></div><button type="button" onClick={() => { setMessage(`Ride request sent to ${selectedRide.driver}.`); setSelectedRide(null); }}>Request this ride <ArrowRight size={17} /></button></div></section></div>}
+    <section className="bbc-benefits">
+      <div className="shell bbc-benefits-grid">
+        <div>
+          <p className="bbc-kicker">WHY SHARE A RIDE?</p>
+          <h2>A simple way to move.</h2>
+          <p>Designed for people travelling between Indore, Dewas, Ujjain and the places in between.</p>
+        </div>
+        <article><CircleCheck /><h3>Book with confidence</h3><p>See the driver, vehicle, price, and pickup point before choosing.</p></article>
+        <article><CarFront /><h3>Driving soon?</h3><p>Fill empty seats and make the cost of the journey lighter.</p><Link href="/offer">Offer a ride <ArrowRight size={16} /></Link></article>
+      </div>
+    </section>
   </main>;
 }
