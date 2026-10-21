@@ -17,41 +17,69 @@ export async function POST(request: NextRequest) {
       const cleanEmail = email.trim().toLowerCase();
       const record = emailOtpStore[cleanEmail];
 
-      if (!record) {
-        return NextResponse.json(
-          { error: 'No active verification code found for this email. Please request a new code.' },
-          { status: 400 }
-        );
+      // 1. Check in-memory store
+      let isMatch = false;
+      if (record && Date.now() <= record.expiresAt && record.otp === cleanOtp) {
+        isMatch = true;
       }
 
-      if (Date.now() > record.expiresAt) {
-        delete emailOtpStore[cleanEmail];
-        return NextResponse.json(
-          { error: 'Verification code has expired. Please request a new one.' },
-          { status: 400 }
-        );
+      // 2. Also check with Supabase Auth verifyOtp (which handles the Supabase email code)
+      const supabase = await createClient();
+      if (supabase) {
+        try {
+          const { data: sbVerifyData, error: sbVerifyErr } = await supabase.auth.verifyOtp({
+            email: cleanEmail,
+            token: cleanOtp,
+            type: 'email',
+          });
+          if (!sbVerifyErr && sbVerifyData?.user) {
+            isMatch = true;
+          }
+        } catch {}
       }
 
-      if (record.otp !== cleanOtp) {
-        record.attempts += 1;
-        if (record.attempts >= 5) {
-          delete emailOtpStore[cleanEmail];
-          return NextResponse.json(
-            { error: 'Too many incorrect attempts. Please request a new verification code.' },
-            { status: 400 }
-          );
+      // 3. Fallback check on profiles table
+      if (!isMatch && supabase) {
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('email_otp, email_otp_expires_at')
+            .eq('email', cleanEmail)
+            .single();
+
+          if (
+            profile?.email_otp === cleanOtp &&
+            (!profile.email_otp_expires_at || new Date(profile.email_otp_expires_at).getTime() > Date.now())
+          ) {
+            isMatch = true;
+          }
+        } catch {}
+      }
+
+      if (!isMatch) {
+        if (record) {
+          record.attempts = (record.attempts || 0) + 1;
+          if (record.attempts >= 5) {
+            delete emailOtpStore[cleanEmail];
+            return NextResponse.json(
+              { error: 'Too many incorrect attempts. Please request a new verification code.' },
+              { status: 400 }
+            );
+          }
         }
         return NextResponse.json(
-          { error: 'Invalid verification code. Please check and try again.' },
+          { error: 'Invalid or expired verification code. Please check your email inbox and try again.' },
           { status: 400 }
         );
       }
 
-      // Valid OTP: Invalidate record immediately to enforce single-use
-      delete emailOtpStore[cleanEmail];
+      // Valid OTP: Invalidate record and mark verified
+      if (record) {
+        record.verified = true;
+        delete emailOtpStore[cleanEmail];
+      }
 
-      // Update Supabase profile if authenticated
-      const supabase = await createClient();
+      // Update Supabase profile
       if (supabase) {
         const { data: userData } = await supabase.auth.getUser();
         if (userData?.user) {
@@ -70,7 +98,7 @@ export async function POST(request: NextRequest) {
         success: true,
         email: cleanEmail,
         isVerified: true,
-        message: 'Email verified successfully!',
+        message: 'Email verified successfully! ✓',
       });
     }
 
