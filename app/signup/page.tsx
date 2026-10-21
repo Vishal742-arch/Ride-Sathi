@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { trackEvent } from '@/lib/analytics';
-import { ShieldCheck, Phone, KeyRound, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, Mail, KeyRound, CheckCircle2 } from 'lucide-react';
 
 export default function Signup() {
   const [email, setEmail] = useState('');
@@ -27,10 +27,10 @@ export default function Signup() {
     return () => clearInterval(timer);
   }, [cooldown]);
 
-  // Request Mobile OTP
-  const handleSendOtp = async () => {
-    if (!phone || phone.trim().length < 10) {
-      setMessage('Please enter a valid 10-digit mobile number first.');
+  // Request Email OTP
+  const handleSendEmailOtp = async () => {
+    if (!email || !email.includes('@')) {
+      setMessage('Please enter a valid email address first.');
       return;
     }
     setMessage('');
@@ -39,25 +39,29 @@ export default function Signup() {
       const res = await fetch('/api/auth/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phone.trim() }),
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          passengerName: fullName.trim() || 'Commuter',
+          purpose: 'REGISTRATION',
+        }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        setMessage(data.error || 'Failed to send OTP.');
+        setMessage(data.error || 'Failed to send verification code.');
         return;
       }
       setOtpSent(true);
       setCooldown(60);
-      setMessage(data.message || 'OTP code sent to your mobile number.');
+      setMessage(data.message || 'Verification code sent to your email address.');
     } catch {
-      setMessage('Network error sending OTP.');
+      setMessage('Network error sending verification code.');
     } finally {
       setOtpLoading(false);
     }
   };
 
-  // Verify Mobile OTP
-  const handleVerifyOtp = async () => {
+  // Verify Email OTP
+  const handleVerifyEmailOtp = async () => {
     if (!otpCode || otpCode.trim().length !== 6) {
       setMessage('Please enter the 6-digit verification code.');
       return;
@@ -68,17 +72,20 @@ export default function Signup() {
       const res = await fetch('/api/auth/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phone.trim(), otp: otpCode.trim() }),
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          otp: otpCode.trim(),
+        }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        setMessage(data.error || 'Invalid OTP code.');
+        setMessage(data.error || 'Invalid verification code.');
         return;
       }
       setOtpVerified(true);
-      setMessage('Mobile number verified successfully! ✓');
+      setMessage('Email verified successfully! ✓');
     } catch {
-      setMessage('Network error verifying OTP.');
+      setMessage('Network error verifying code.');
     } finally {
       setOtpLoading(false);
     }
@@ -87,7 +94,7 @@ export default function Signup() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!otpVerified) {
-      setMessage('Please verify your mobile number with the OTP code before completing registration.');
+      setMessage('Please verify your email address with the 6-digit code before completing registration.');
       return;
     }
     setLoading(true);
@@ -102,8 +109,8 @@ export default function Signup() {
         options: {
           data: {
             full_name: fullName.trim(),
-            phone: phone.trim(),
-            is_phone_verified: true,
+            phone: phone.trim() || undefined,
+            is_email_verified: true,
             role,
           },
         },
@@ -117,7 +124,7 @@ export default function Signup() {
 
       if (data?.session) {
         trackEvent('signup_completed');
-        setMessage('Account created & phone verified! Redirecting to your dashboard…');
+        setMessage('Account created & verified! Redirecting to your dashboard…');
         setTimeout(() => (window.location.href = '/dashboard'), 1000);
         return;
       }
@@ -128,7 +135,7 @@ export default function Signup() {
       });
 
       if (!loginError) {
-        setMessage('Account created & phone verified! Redirecting…');
+        setMessage('Account created & verified! Redirecting…');
         setTimeout(() => (window.location.href = '/dashboard'), 1000);
         return;
       }
@@ -146,7 +153,7 @@ export default function Signup() {
       <div className="shell finder">
         <form onSubmit={handleSubmit} className="find-card" style={{ maxWidth: 480, margin: '0 auto', gap: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#087c64', fontWeight: 800, fontSize: 12 }}>
-            <ShieldCheck size={18} /> RIDE SATHI VERIFIED ACCOUNT
+            <ShieldCheck size={18} /> RIDE WITH ME VERIFIED ACCOUNT
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 900, color: '#0f172a', margin: '4px 0 0' }}>Create your account</h1>
           <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 8px' }}>Register to book or offer rides across Indore, Dewas, and Ujjain.</p>
@@ -164,54 +171,27 @@ export default function Signup() {
             </div>
           </label>
 
-          <label>
-            <span style={{ fontSize: 11, fontWeight: 800, color: '#475569' }}>EMAIL ADDRESS</span>
-            <div className="find-input" style={{ borderRadius: 12 }}>
-              <input
-                required
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@example.com"
-              />
-            </div>
-          </label>
-
-          <label>
-            <span style={{ fontSize: 11, fontWeight: 800, color: '#475569' }}>PASSWORD</span>
-            <div className="find-input" style={{ borderRadius: 12 }}>
-              <input
-                required
-                minLength={8}
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Minimum 8 characters"
-              />
-            </div>
-          </label>
-
-          {/* Mobile Number & OTP Verification */}
+          {/* Email Address & Email OTP Verification */}
           <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 16, padding: 16, display: 'grid', gap: 12 }}>
             <label style={{ margin: 0 }}>
               <span style={{ fontSize: 11, fontWeight: 800, color: '#087c64', display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Phone size={14} /> MOBILE NUMBER (FOR 6-DIGIT OTP)
+                <Mail size={14} /> EMAIL ADDRESS (FOR 6-DIGIT OTP)
               </span>
               <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
                 <div className="find-input" style={{ flex: 1, borderRadius: 10 }}>
                   <input
                     required
-                    type="tel"
+                    type="email"
                     disabled={otpVerified}
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="e.g. 9876543210"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="name@example.com"
                   />
                 </div>
                 {!otpVerified && (
                   <button
                     type="button"
-                    onClick={handleSendOtp}
+                    onClick={handleSendEmailOtp}
                     disabled={otpLoading || cooldown > 0}
                     style={{
                       background: cooldown > 0 ? '#cbd5e1' : '#087c64',
@@ -234,7 +214,7 @@ export default function Signup() {
             {otpSent && !otpVerified && (
               <div style={{ display: 'grid', gap: 8, paddingTop: 4 }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <KeyRound size={14} /> ENTER 6-DIGIT OTP CODE
+                  <KeyRound size={14} /> ENTER 6-DIGIT EMAIL CODE
                 </span>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <div className="find-input" style={{ flex: 1, borderRadius: 10 }}>
@@ -249,56 +229,130 @@ export default function Signup() {
                   </div>
                   <button
                     type="button"
-                    onClick={handleVerifyOtp}
+                    onClick={handleVerifyEmailOtp}
                     disabled={otpLoading || otpCode.length !== 6}
                     style={{
-                      background: '#0f172a',
+                      background: otpCode.length === 6 ? '#087c64' : '#cbd5e1',
                       color: '#fff',
                       border: 'none',
                       borderRadius: 10,
                       padding: '0 16px',
                       fontSize: 12,
                       fontWeight: 700,
-                      cursor: 'pointer',
+                      cursor: otpCode.length === 6 ? 'pointer' : 'not-allowed',
+                      whiteSpace: 'nowrap',
                     }}
                   >
-                    Verify OTP
+                    {otpLoading ? 'Verifying…' : 'Verify'}
                   </button>
                 </div>
               </div>
             )}
 
             {otpVerified && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#166534', fontSize: 13, fontWeight: 800 }}>
-                <CheckCircle2 size={16} /> Mobile Number Verified ✓
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#166534', fontSize: 12, fontWeight: 700 }}>
+                <CheckCircle2 size={16} /> Email verified successfully
               </div>
             )}
           </div>
 
           <label>
-            <span style={{ fontSize: 11, fontWeight: 800, color: '#475569' }}>ACCOUNT TYPE</span>
+            <span style={{ fontSize: 11, fontWeight: 800, color: '#475569' }}>PASSWORD</span>
             <div className="find-input" style={{ borderRadius: 12 }}>
-              <select value={role} onChange={(e) => setRole(e.target.value)}>
-                <option value="viewer">Passenger (Find rides)</option>
-                <option value="creator">Driver (Offer rides)</option>
-              </select>
+              <input
+                required
+                minLength={8}
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Minimum 8 characters"
+              />
             </div>
           </label>
+
+          <label>
+            <span style={{ fontSize: 11, fontWeight: 800, color: '#475569' }}>PHONE NUMBER (OPTIONAL)</span>
+            <div className="find-input" style={{ borderRadius: 12 }}>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="e.g. 9876543210"
+              />
+            </div>
+          </label>
+
+          <div style={{ display: 'grid', gap: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: '#475569' }}>ACCOUNT ROLE</span>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setRole('viewer')}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  border: role === 'viewer' ? '2px solid #087c64' : '1px solid #cbd5e1',
+                  background: role === 'viewer' ? '#f0fdf4' : '#fff',
+                  color: role === 'viewer' ? '#087c64' : '#475569',
+                  cursor: 'pointer',
+                }}
+              >
+                Passenger / Commuter
+              </button>
+              <button
+                type="button"
+                onClick={() => setRole('driver')}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  border: role === 'driver' ? '2px solid #087c64' : '1px solid #cbd5e1',
+                  background: role === 'driver' ? '#f0fdf4' : '#fff',
+                  color: role === 'driver' ? '#087c64' : '#475569',
+                  cursor: 'pointer',
+                }}
+              >
+                Driver / Vehicle Owner
+              </button>
+            </div>
+          </div>
 
           <button
             type="submit"
             disabled={loading || !otpVerified}
-            className="search-button mt-4"
-            style={{ borderRadius: 12, background: otpVerified ? '#087c64' : '#94a3b8', cursor: otpVerified ? 'pointer' : 'not-allowed' }}
+            className="search-button"
+            style={{
+              marginTop: 8,
+              background: !otpVerified ? '#cbd5e1' : undefined,
+              cursor: !otpVerified ? 'not-allowed' : 'pointer',
+            }}
           >
-            {loading ? 'Creating account...' : 'Create Verified Account'}
+            {loading ? 'Creating account…' : 'Create Account'}
           </button>
 
-          {message && <p className="form-note mt-2" role="status" style={{ color: otpVerified ? '#166534' : '#991b1b', fontWeight: 600 }}>{message}</p>}
+          {message && (
+            <p
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                textAlign: 'center',
+                color: message.includes('✓') || message.includes('success') ? '#166534' : '#dc2626',
+                margin: 0,
+              }}
+            >
+              {message}
+            </p>
+          )}
 
-          <p className="mt-4 text-center text-sm" style={{ color: '#64748b' }}>
-            Already a member? <Link href="/login" style={{ color: '#087c64', fontWeight: 700 }}>Log in</Link>
-          </p>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 6, fontSize: 13, color: '#64748b' }}>
+            <span>Already have an account?</span>
+            <Link href="/login" style={{ color: '#087c64', fontWeight: 700 }}>
+              Log in
+            </Link>
+          </div>
         </form>
       </div>
     </main>

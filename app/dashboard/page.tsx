@@ -85,7 +85,7 @@ export default function Dashboard() {
   const [trustedDrivers, setTrustedDrivers] = useState<TrustedDriver[]>([]);
   const [verifiedPartners, setVerifiedPartners] = useState<VerifiedPartner[]>([]);
   const [recentActivity, setRecentActivity] = useState<RecentActivityItem[]>([]);
-  const [verifyingBooking, setVerifyingBooking] = useState<{ id: string; route: string } | null>(null);
+  const [verifyingBooking, setVerifyingBooking] = useState<{ id: string; route: string; fareAmount?: number } | null>(null);
   const [, setNow] = useState(Date.now());
 
   useEffect(() => {
@@ -218,7 +218,7 @@ export default function Dashboard() {
                       </span>
                     </div>
                     <button
-                      onClick={() => setVerifyingBooking({ id: commute.id, route: `${commute.origin} ➔ ${commute.destination}` })}
+                      onClick={() => setVerifyingBooking({ id: commute.id, route: `${commute.origin} ➔ ${commute.destination}`, fareAmount: commute.fareAmount })}
                       className="text-xs font-bold text-slate-900 bg-amber-400 hover:bg-amber-500 px-3 py-1.5 rounded-lg transition"
                     >
                       Driver Verify
@@ -342,6 +342,7 @@ export default function Dashboard() {
         <DriverVerifyModal
           bookingId={verifyingBooking.id}
           routeText={verifyingBooking.route}
+          fareAmount={verifyingBooking.fareAmount}
           onClose={() => setVerifyingBooking(null)}
           onSuccess={() => fetchDashboardData()}
         />

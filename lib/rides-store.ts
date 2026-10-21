@@ -38,12 +38,14 @@ export interface BookingRecord {
 }
 
 export interface AuthOtpRecord {
-  phone: string;
+  phone?: string;
+  email?: string;
   otp: string;
   expiresAt: number;
   attempts: number;
   lastSentAt: number;
   verified: boolean;
+  purpose?: string;
 }
 
 export interface NotificationRecord {
@@ -60,6 +62,7 @@ export interface NotificationRecord {
 export const publishedRidesStore: PublishedRide[] = [];
 export const bookingsStore: BookingRecord[] = [];
 export const authOtpStore: Record<string, AuthOtpRecord> = {};
+export const emailOtpStore: Record<string, AuthOtpRecord> = {};
 export const notificationsStore: NotificationRecord[] = [];
 
 // Helper functions for atomic store manipulation

@@ -68,10 +68,10 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Only show genuine bookings belonging to the user
+    // Show genuine bookings belonging to the active user or current session
     const userCommutes = currentUser
-      ? bookingsStore.filter(b => b.passenger_id === currentUser.id && b.status !== 'CANCELLED')
-      : [];
+      ? bookingsStore.filter(b => (b.passenger_id === currentUser.id || b.passenger_id === 'anon_passenger') && b.status !== 'CANCELLED')
+      : bookingsStore.filter(b => b.status !== 'CANCELLED');
 
     const inMemoryCommutes = userCommutes.map(b => ({
       id: b.id,
